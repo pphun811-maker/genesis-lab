@@ -1,5 +1,8 @@
 import { blankSpec, normalizeSpec } from '../engine/presets';
 import {
+  BIOME_FRESHWATER,
+  BIOME_LAND,
+  BIOME_OCEAN,
   DEFAULT_GENOME,
   GENE_KEYS,
   GENE_RANGE,
@@ -133,6 +136,23 @@ export function generateWorldSpecByRules(nl: string, seed: number): { spec: Worl
     colorThemes.push('ocean');
     nameThemes.push('ocean');
     applied.push('海洋主题：食物上限 ×1.3，障碍物占比 0.02，物种色相偏蓝');
+  }
+
+  // ---- 生态圈（水域复合地图）：群岛 > 海洋 > 湖泊 的优先级决定栖息域 ----
+  let biomes: WorldSpec['biomes'];
+  let waterMode: 'islands' | 'ocean' | 'fresh' | null = null;
+  if (has('群岛', '岛屿', '岛链', 'archipelago', 'islands')) {
+    biomes = { oceanRatio: 0.4, freshwater: 0.02 };
+    waterMode = 'islands';
+    applied.push('群岛/岛屿：海洋占地 40%，第一支种群留岛、其余下海');
+  } else if (has('海洋', '大海', '海底', 'ocean')) {
+    biomes = { oceanRatio: 0.35, freshwater: 0.02 };
+    waterMode = 'ocean';
+    applied.push('海洋世界：海洋占地 35%，物种栖居咸水海域');
+  } else if (has('湖泊', '淡水', '湿地', 'lake', 'freshwater')) {
+    biomes = { oceanRatio: 0.05, freshwater: 0.12 };
+    waterMode = 'fresh';
+    applied.push('湖泊/淡水：湖泊占陆地 12%，物种栖居淡水水域');
   }
   const hot = has('高温', '炎热', '热带', '酷热', 'hot', 'tropical', 'scorching');
   const cold = has('寒冷', '冰', '极地', '冻', 'cold', 'arctic', 'polar', 'frozen', 'ice');
@@ -300,6 +320,15 @@ export function generateWorldSpecByRules(nl: string, seed: number): { spec: Worl
     for (const s of species) s.genome.aggression = 0;
   }
 
+  // ---- 生态圈栖息域（物种名单确定后统一施加） ----
+  if (waterMode === 'ocean') {
+    for (const s of species) s.habitat = BIOME_OCEAN;
+  } else if (waterMode === 'fresh') {
+    for (const s of species) s.habitat = BIOME_FRESHWATER;
+  } else if (waterMode === 'islands') {
+    for (let i = 0; i < species.length; i++) species[i].habitat = i === 0 ? BIOME_LAND : BIOME_OCEAN;
+  }
+
   // ---- 按主题命名与配色 ----
   const styleKey = colorThemes[0] ?? 'neutral';
   const style = THEME_STYLES[styleKey] ?? THEME_STYLES.neutral;
@@ -335,6 +364,6 @@ export function generateWorldSpecByRules(nl: string, seed: number): { spec: Worl
     s.name = s.name.slice(0, 12);
   }
 
-  const spec = normalizeSpec({ name: worldName, width, height, food, terrain, species, rules }, seed);
+  const spec = normalizeSpec({ name: worldName, width, height, food, terrain, biomes, species, rules }, seed);
   return { spec, applied };
 }

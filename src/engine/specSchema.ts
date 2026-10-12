@@ -37,6 +37,7 @@ export const speciesSchema = z.object({
   count: z.number().min(1).max(600).optional(),
   genome: genomeSchema.optional(),
   variance: z.record(z.string(), z.number()).optional(),
+  habitat: z.number().int().min(0).max(2).optional(),
 });
 
 /** 完整世界定义（全部字段可选；species 若给出则需 1..6 个） */
@@ -55,6 +56,12 @@ export const worldSpecSchema = z.object({
     .object({
       obstacleRatio: z.number().min(0).max(0.3).optional(),
       hazardRatio: z.number().min(0).max(0.2).optional(),
+    })
+    .optional(),
+  biomes: z
+    .object({
+      oceanRatio: z.number().min(0).max(0.45).optional(),
+      freshwater: z.number().min(0).max(0.25).optional(),
     })
     .optional(),
   species: z.array(speciesSchema).min(1).max(6).optional(),
@@ -137,15 +144,20 @@ export function describeSpecForPrompt(): string {
     '    "maxPerCell": 18,                   // 数值，2..60，每格食物能量上限（越大世界越富饶）',
     '    "regrow": 0.015                     // 数值，0.001..0.1，每 tick 食物再生比例',
     '  },',
-    '  "terrain": {',
-    '    "obstacleRatio": 0.05,              // 数值，0..0.3，障碍物占地比例',
-    '    "hazardRatio": 0.02                 // 数值，0..0.2，危险区占地比例（进入会持续受伤）',
-    '  },',
-    '  "species": [                          // 数组，1..6 个物种',
-    '    {',
-    '      "name": "物种名",                 // 字符串，≤12 字，建议用有画面感的中文短名',
-    '      "color": "#34d399",               // 物种代表色，格式 #rrggbb',
-    '      "count": 100,                     // 数值，1..600，初始个体数量',
+  '  "terrain": {',
+  '    "obstacleRatio": 0.05,              // 数值，0..0.3，障碍物占地比例',
+  '    "hazardRatio": 0.02                 // 数值，0..0.2，危险区占地比例（进入会持续受伤）',
+  '  },',
+  '  "biomes": {                           // 可选：生态圈（复合地图）。省略 = 纯陆地世界',
+  '    "oceanRatio": 0.1,                  // 数值，0..0.45，海洋（咸水）占地比例；水陆真隔离',
+  '    "freshwater": 0.05                  // 数值，0..0.25，淡水湖泊占陆地的比例',
+  '  },',
+  '  "species": [                          // 数组，1..6 个物种',
+  '    {',
+  '      "name": "物种名",                 // 字符串，≤12 字，建议用有画面感的中文短名',
+  '      "color": "#34d399",               // 物种代表色，格式 #rrggbb',
+  '      "count": 100,                     // 数值，1..600，初始个体数量',
+  '      "habitat": 0,                     // 可选：栖息域 0=陆地 1=淡水 2=海洋（硬隔离，不同域互不可入；省略=陆地）',
     '      "genome": {                       // 初始基因模板，以下字段全部可省略',
     genomeLines,
     '      },',

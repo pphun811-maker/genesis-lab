@@ -67,6 +67,8 @@ export class WorldRenderer {
   /** 上次热力层实际重建的时间戳；-1 = 尚未重建过（下次调用必执行） */
   private lastHeatPaintAt = -1;
   private fertility: Float32Array = new Float32Array(0);
+  /** 地形值（0 普通 1 障碍 2 危险 3 淡水 4 海洋），食物层按水陆分色用 */
+  private terrainArr: Uint8Array = new Uint8Array(0);
   private maxPerCell = 1;
   private vignette: { gradient: CanvasGradient; w: number; h: number } | null = null;
   /** 可见个体下标的复用缓冲（每帧重建内容，容量保持水位） */
@@ -94,6 +96,7 @@ export class WorldRenderer {
     this.worldW = width;
     this.worldH = height;
     this.fertility = fertility;
+    this.terrainArr = terrain;
     this.maxPerCell = foodMaxPerCell;
     // 新世界：食物层节流计时归零，保证设置后的第一次 updateFood 必定执行
     this.lastFoodPaintAt = -1;
@@ -124,6 +127,18 @@ export class WorldRenderer {
         d[o] = 118;
         d[o + 1] = 42;
         d[o + 2] = 40;
+      } else if (t === 3) {
+        // 淡水：湖绿→深青，随肥沃度略亮（营养陷阱）
+        const f = fertility[i];
+        d[o] = 14 + 10 * f;
+        d[o + 1] = 58 + 34 * f;
+        d[o + 2] = 66 + 30 * f;
+      } else if (t === 4) {
+        // 海洋：深邃暗蓝，随肥沃度（浮游生物）微亮
+        const f = fertility[i];
+        d[o] = 9 + 8 * f;
+        d[o + 1] = 26 + 18 * f;
+        d[o + 2] = 46 + 26 * f;
       } else {
         // 肥沃度 → 暗绿渐变
         const f = fertility[i];
@@ -175,9 +190,23 @@ export class WorldRenderer {
       const f = src.length > i ? src[i] : 0;
       if (cap <= 0 || f <= 0.05) continue;
       const o = i * 4;
-      d[o] = 74;
-      d[o + 1] = 222;
-      d[o + 2] = 128;
+      const t = this.terrainArr.length > i ? this.terrainArr[i] : 0;
+      if (t === 3) {
+        // 淡水浮游生物：湖青
+        d[o] = 94;
+        d[o + 1] = 234;
+        d[o + 2] = 212;
+      } else if (t === 4) {
+        // 海洋浮游生物：浪青
+        d[o] = 103;
+        d[o + 1] = 232;
+        d[o + 2] = 249;
+      } else {
+        // 陆地植被：绿
+        d[o] = 74;
+        d[o + 1] = 222;
+        d[o + 2] = 128;
+      }
       d[o + 3] = Math.min(200, (f / cap) * 190);
     }
     fctx.putImageData(img, 0, 0);

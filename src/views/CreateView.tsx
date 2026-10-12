@@ -39,6 +39,13 @@ const GENE_SLIDERS: Array<{ key: keyof Genome; label: string }> = [
   { key: 'reproThreshold', label: '繁殖阈值' },
 ];
 
+/** 物种栖息域选项（BIOME_*；硬隔离：不同域互不可入，分化时继承） */
+const SPECIES_HABITATS: Array<{ value: number; label: string; hint: string }> = [
+  { value: 0, label: '陆地', hint: '只能待在陆地上，水域是不可逾越的墙' },
+  { value: 1, label: '淡水', hint: '只能待在湖泊与湿地里（千湖大陆/群岛海域等水圈世界）' },
+  { value: 2, label: '海洋', hint: '只能待在海洋里（群岛海域等水圈世界）' },
+];
+
 export function CreateView() {
   const navigate = useNavigate();
   const create = useExperiments((s) => s.create);
@@ -232,6 +239,12 @@ export function CreateView() {
           <Slider label="危险区" value={spec.terrain.hazardRatio} min={0} max={0.2} step={0.01}
             display={`${Math.round(spec.terrain.hazardRatio * 100)}%`}
             onChange={(v) => patch({ terrain: { ...spec.terrain, hazardRatio: v } })} />
+          <Slider label="海洋" value={spec.biomes?.oceanRatio ?? 0} min={0} max={0.45} step={0.01}
+            display={`${Math.round((spec.biomes?.oceanRatio ?? 0) * 100)}%`}
+            onChange={(v) => patch({ biomes: { oceanRatio: v, freshwater: spec.biomes?.freshwater ?? 0 } })} />
+          <Slider label="湖泊" value={spec.biomes?.freshwater ?? 0} min={0} max={0.25} step={0.01}
+            display={`${Math.round((spec.biomes?.freshwater ?? 0) * 100)}%`}
+            onChange={(v) => patch({ biomes: { oceanRatio: spec.biomes?.oceanRatio ?? 0, freshwater: v } })} />
         </div>
       </section>
 
@@ -293,6 +306,25 @@ export function CreateView() {
                 </div>
                 {open && (
                   <div className="border-t border-lab-border p-3">
+                    <div className="mb-3 flex items-center gap-3">
+                      <span className="w-16 text-xs text-lab-muted">栖息域</span>
+                      <div className="flex gap-1.5">
+                        {SPECIES_HABITATS.map(({ value, label, hint }) => (
+                          <button
+                            key={value}
+                            title={hint}
+                            onClick={() => patchSpecies(i, { habitat: value })}
+                            className={`rounded border px-2.5 py-1 text-xs transition-colors ${
+                              (sp.habitat ?? 0) === value
+                                ? 'border-lab-accent bg-lab-accent/10 text-lab-text'
+                                : 'border-lab-border text-lab-muted hover:text-lab-text'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <div className="mb-3 flex items-center gap-3">
                       <span className="w-16 text-xs text-lab-muted">多样性</span>
                       <input

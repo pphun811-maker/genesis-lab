@@ -51,6 +51,8 @@ const TERRAIN_LEGEND: Array<{ color: string; label: string }> = [
   { color: '#4ade80', label: '食物' },
   { color: '#363c48', label: '障碍' },
   { color: '#762a28', label: '危险区' },
+  { color: '#12495a', label: '淡水' },
+  { color: '#0e2f52', label: '海洋' },
 ];
 
 /** 热力叠加切换项（对应渲染器 OverlayMode） */

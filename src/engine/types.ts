@@ -59,6 +59,8 @@ export interface SpeciesTemplate {
   /** 初始基因模板（缺失字段取默认值），variance 为各基因初始方差 */
   genome: Partial<Genome>;
   variance?: Partial<Record<GeneKey, number>>;
+  /** 栖息域（BIOME_*）：初始个体投放在对应生态圈；缺省=陆地（旧快照兼容） */
+  habitat?: number;
 }
 
 export interface WorldSpec {
@@ -77,6 +79,17 @@ export interface WorldSpec {
     obstacleRatio: number;
     /** 危险区占比（0..0.2） */
     hazardRatio: number;
+  };
+  /**
+   * 生态圈配置（旧快照缺省 = 纯陆地世界，行为与历史版本一致）。
+   * 高度+湿度双噪声确定性分类：海洋 = 高度最低的 oceanRatio 占比；
+   * 淡水湖泊 = 剩余陆地中湿度最高的 freshwater 占比。
+   */
+  biomes?: {
+    /** 海洋（咸水）占地比例（0..0.45）；0 = 无海洋 */
+    oceanRatio?: number;
+    /** 淡水湖泊占非海洋陆地的比例（0..0.25）；0 = 无湖泊 */
+    freshwater?: number;
   };
   species: SpeciesTemplate[];
   rules: {
@@ -133,6 +146,8 @@ export interface SpeciesInfo {
   extinctTick: number | null;
   /** 祖先物种 id（新物种由哪个物种分化而来） */
   parentSpeciesId: number | null;
+  /** 栖息域（BIOME_*）：分化时继承父物种；缺省=陆地（旧快照兼容） */
+  habitat?: number;
   /** 特征标签（由中心基因组推导；旧快照恢复时可能缺失，惰性补算） */
   tags?: string[];
   /** 一句话生态位描述 */
@@ -208,6 +223,40 @@ export interface SimState {
 export const TERRAIN_NORMAL = 0;
 export const TERRAIN_OBSTACLE = 1;
 export const TERRAIN_HAZARD = 2;
+/** 淡水水域（湖泊/湿地）：淡水栖息域生物可通行，产浮游食物 */
+export const TERRAIN_FRESH = 3;
+/** 海洋（咸水）：海洋栖息域生物可通行，产浮游食物 */
+export const TERRAIN_OCEAN = 4;
+
+// ---------------------------------------------------------------------------
+// 生态圈（栖息域）
+// ---------------------------------------------------------------------------
+
+/** 栖息域：陆地 / 淡水 / 海洋（物种属性 + 个体所在格共同决定通行与命名） */
+export const BIOME_LAND = 0;
+export const BIOME_FRESHWATER = 1;
+export const BIOME_OCEAN = 2;
+
+export const BIOME_LABELS: Record<number, string> = {
+  [BIOME_LAND]: '陆地',
+  [BIOME_FRESHWATER]: '淡水',
+  [BIOME_OCEAN]: '海洋',
+};
+
+/** 地形值 → 栖息域（障碍/危险/普通格都算陆域；水域格各归其主） */
+export function habitatOfTerrain(t: number): number {
+  if (t === TERRAIN_FRESH) return BIOME_FRESHWATER;
+  if (t === TERRAIN_OCEAN) return BIOME_OCEAN;
+  return BIOME_LAND;
+}
+
+/** 各栖息域身上「能觅食的地形值」（陆地=普通格；水域=本域水面） */
+export const HOME_TERRAIN = [TERRAIN_NORMAL, TERRAIN_FRESH, TERRAIN_OCEAN] as const;
+
+/** 地形值是否产食物（普通格 + 两类水面；障碍/危险区不产） */
+export function terrainRegrows(t: number): boolean {
+  return t === TERRAIN_NORMAL || t === TERRAIN_FRESH || t === TERRAIN_OCEAN;
+}
 
 // ---------------------------------------------------------------------------
 // 指标与事件

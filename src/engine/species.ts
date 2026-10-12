@@ -1,12 +1,14 @@
 import { blendCentroid, geneticDistance } from './genome';
 import { describeGenome } from './naming';
-import type { Genome, SimEvent, SpeciesInfo } from './types';
+import { BIOME_LAND, type Genome, type SimEvent, type SpeciesInfo } from './types';
 
 /**
  * 物种表：按遗传距离对新个体做增量聚类。
  *
  * 新生个体加入基因中心距离最近的现存物种；距离超过阈值则分化为新物种。
  * 物种全员灭绝且持续一段时间后标记灭绝并移出活跃表。
+ * 物种栖息域（habitat）在建立时确定、分化时继承——硬隔离下个体永不跨圈，
+ * 这是「海岛/湖泊=物种孵化器」的谱系学基础。
  */
 export class SpeciesTable {
   /** 存续中的物种（不含已灭绝） */
@@ -22,9 +24,9 @@ export class SpeciesTable {
     private readonly maxSpecies: number = 64,
   ) {}
 
-  /** 初始化时为一支种群建立物种 */
-  found(name: string, color: string, centroid: Genome, tick: number): SpeciesInfo {
-    const desc = describeGenome(centroid);
+  /** 初始化时为一支种群建立物种（栖息域随初始落点/模板确定） */
+  found(name: string, color: string, centroid: Genome, tick: number, habitat: number = BIOME_LAND): SpeciesInfo {
+    const desc = describeGenome(centroid, habitat);
     const info: SpeciesInfo = {
       id: this.nextId++,
       name,
@@ -33,6 +35,7 @@ export class SpeciesTable {
       foundedTick: tick,
       extinctTick: null,
       parentSpeciesId: null,
+      habitat,
       tags: desc.tags,
       niche: desc.niche,
       latin: desc.latin,
@@ -43,11 +46,14 @@ export class SpeciesTable {
     return info;
   }
 
-  /** 为新生个体分配物种；距离最近的物种太远时分化为新物种 */
-  assign(genome: Genome, tick: number): { species: SpeciesInfo; speciated: boolean; event?: SimEvent } {
+  /** 为新生个体分配物种；距离最近的物种太远时分化为新物种（栖息域继承父种） */
+  assign(genome: Genome, tick: number, birthHabitat: number = BIOME_LAND): { species: SpeciesInfo; speciated: boolean; event?: SimEvent } {
     let best: SpeciesInfo | null = null;
     let bestDist = Infinity;
     for (const s of this.active) {
+      // 栖息域隔离：异域物种不参与收编——海里出生的个体绝不会被
+      // 归入陆生物种（否则物种属性会对自己成员的所在圈域撒谎）
+      if ((s.habitat ?? BIOME_LAND) !== birthHabitat) continue;
       const d = geneticDistance(genome, s.centroid);
       if (d < bestDist) {
         bestDist = d;
@@ -61,7 +67,8 @@ export class SpeciesTable {
     }
 
     const parent = best;
-    const desc = describeGenome(genome);
+    const habitat = parent ? (parent.habitat ?? birthHabitat) : birthHabitat;
+    const desc = describeGenome(genome, habitat);
     const info: SpeciesInfo = {
       id: this.nextId,
       name: this.uniqueName(desc.name),
@@ -70,6 +77,7 @@ export class SpeciesTable {
       foundedTick: tick,
       extinctTick: null,
       parentSpeciesId: parent ? parent.id : null,
+      habitat,
       tags: desc.tags,
       niche: desc.niche,
       latin: desc.latin,

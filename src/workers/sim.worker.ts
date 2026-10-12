@@ -24,7 +24,7 @@ function post(msg: FromWorker, transfer?: Transferable[]): void {
 /** 旧快照恢复的物种缺特征描述：惰性补算（确定性纯函数，代价一次性） */
 function ensureDescription(s: SpeciesInfo): void {
   if (!s.tags || !s.niche || !s.latin) {
-    const d = describeGenome(s.centroid);
+    const d = describeGenome(s.centroid, s.habitat ?? 0);
     s.tags = d.tags;
     s.niche = d.niche;
     s.latin = d.latin;

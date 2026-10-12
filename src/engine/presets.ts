@@ -1,4 +1,4 @@
-import type { WorldSpec } from './types';
+import { BIOME_FRESHWATER, BIOME_OCEAN, type WorldSpec } from './types';
 
 /**
  * 内置世界预设。数值经过能量学估算：
@@ -181,6 +181,105 @@ export const PRESETS: PresetDef[] = [
         ],
       }),
   },
+  {
+    id: 'lake-continent',
+    title: '千湖大陆',
+    desc: '湿润大陆湖泊星罗棋布。淡水鱼群与陆生种群被水岸分隔，每片湖都是独立的物种孵化器。',
+    spec: (seed) =>
+      makeSpec('千湖大陆', seed, {
+        food: { maxPerCell: 20, regrow: 0.018 },
+        biomes: { oceanRatio: 0.1, freshwater: 0.12 },
+        species: [
+          {
+            name: '银鲢',
+            color: '#7dd3fc',
+            count: 120,
+            habitat: BIOME_FRESHWATER,
+            genome: { speed: 0.6, sense: 8, aggression: 0, sociability: 0.75 },
+            variance: { speed: 0.1, sense: 1 },
+          },
+          {
+            name: '岸羚',
+            color: '#a3e635',
+            count: 120,
+            genome: { speed: 0.75, sense: 9, size: 0.85, aggression: 0, fear: 0.7, sociability: 0.5 },
+            variance: { speed: 0.12, sense: 1.5, fear: 0.1 },
+          },
+          {
+            name: '湖鲈',
+            color: '#f87171',
+            count: 22,
+            habitat: BIOME_FRESHWATER,
+            genome: {
+              speed: 0.95,
+              sense: 12,
+              size: 1.4,
+              aggression: 0.9,
+              fear: 0,
+              reproThreshold: 190,
+            },
+            variance: { speed: 0.1, sense: 1.5 },
+          },
+        ],
+      }),
+  },
+  {
+    id: 'archipelago',
+    title: '群岛海域',
+    desc: '汪洋中的岛链。海洋鱼群在礁间繁衍，陆上小种群被大海彻底隔离——看地理隔离如何催生新物种。',
+    spec: (seed) =>
+      makeSpec('群岛海域', seed, {
+        food: { maxPerCell: 16, regrow: 0.016 },
+        biomes: { oceanRatio: 0.4, freshwater: 0.02 },
+        rules: {
+          mutationRate: 0.18,
+          maxPopulation: 2600,
+          sexualReproduction: true,
+          disasters: { enabled: true, severity: 0.5 },
+        },
+        species: [
+          {
+            name: '沙丁群',
+            color: '#38bdf8',
+            count: 200,
+            habitat: BIOME_OCEAN,
+            genome: { speed: 0.7, sense: 9, size: 0.7, aggression: 0, fear: 0.6, sociability: 0.85 },
+            variance: { speed: 0.12, sense: 1.5 },
+          },
+          {
+            name: '礁蟹',
+            color: '#fb923c',
+            count: 80,
+            habitat: BIOME_OCEAN,
+            genome: { speed: 0.4, sense: 7, size: 0.6, aggression: 0.3, metabolism: 0.8 },
+            variance: { aggression: 0.2 },
+          },
+          {
+            name: '岛民',
+            color: '#facc15',
+            count: 90,
+            genome: { speed: 0.55, sense: 8, aggression: 0.1, sociability: 0.4 },
+            variance: { speed: 0.1, sense: 1 },
+          },
+          {
+            name: '海猎者',
+            color: '#f87171',
+            count: 16,
+            habitat: BIOME_OCEAN,
+            genome: {
+              speed: 1.1,
+              sense: 13,
+              size: 1.5,
+              aggression: 0.95,
+              fear: 0,
+              reproThreshold: 200,
+              metabolism: 1.1,
+            },
+            variance: { speed: 0.1, sense: 1.5 },
+          },
+        ],
+      }),
+  },
 ];
 
 /** 世界创建器的默认起点（空白 + 一支种群） */
@@ -214,6 +313,13 @@ export function normalizeSpec(raw: Partial<WorldSpec> & { species?: WorldSpec['s
       obstacleRatio: clampNum(raw.terrain?.obstacleRatio ?? base.terrain.obstacleRatio, 0, 0.3),
       hazardRatio: clampNum(raw.terrain?.hazardRatio ?? base.terrain.hazardRatio, 0, 0.2),
     },
+    // 生态圈透传（不注入默认水——预设是否带水由预设自己决定，旧世界保持纯陆地）
+    biomes: raw.biomes
+      ? {
+          oceanRatio: clampNum(raw.biomes.oceanRatio ?? 0, 0, 0.45),
+          freshwater: clampNum(raw.biomes.freshwater ?? 0, 0, 0.25),
+        }
+      : undefined,
     species:
       raw.species && raw.species.length > 0
         ? raw.species.slice(0, 6).map((s, i) => ({
@@ -222,6 +328,7 @@ export function normalizeSpec(raw: Partial<WorldSpec> & { species?: WorldSpec['s
             count: clampInt(s.count ?? 100, 1, 600),
             genome: { ...base.species[0].genome, ...s.genome },
             variance: { ...(s.variance ?? {}) },
+            habitat: clampInt(s.habitat ?? 0, 0, 2),
           }))
         : base.species,
     rules: {

@@ -1,4 +1,7 @@
 import {
+  BIOME_FRESHWATER,
+  BIOME_LAND,
+  BIOME_OCEAN,
   DEFAULT_GENOME,
   GENE_KEYS,
   GENE_RANGE,
@@ -7,16 +10,19 @@ import {
 } from './types';
 
 /**
- * 物种命名器：由基因组确定性地推导现实生物风格的命名。
+ * 物种命名器：由基因组（+栖息域）确定性地推导现实生物风格的命名。
  *
  *   name  —— 俗名，遵循中文动物命名惯例「[大小][颜色][类群]」：
- *            大灰狼 / 赤狐 / 大眼鹰 / 盲鼠 / 巨金象 / 疾羚
- *   latin —— 拉丁双名「属名 种加词」（Canis ferox），属名来自类群，
+ *            陆地：大灰狼 / 赤狐 / 大眼鹰 / 盲鼠 / 巨金象 / 疾羚
+ *            淡水：青鲈 / 巨银鲶 / 大眼鳜 / 疾鳟 / 微绿鳉
+ *            海洋：蓝鲨 / 巨蓝鲸 / 大眼章鱼 / 疾鲔 / 微蓝鳀
+ *   latin —— 拉丁双名「属名 种加词」，属名来自类群（按栖息域分派表），
  *            种加词来自最显著的性状偏离（ferox 凶猛 / celer 迅速 / caecus 盲…）
- *   tags  —— 至多四枚特征标签
+ *   tags  —— 至多四枚特征标签（淡水/海洋物种以栖息域标签开头）
  *   niche —— 一句话生态位描述
  *
- * 纯函数：无随机、无状态，相同基因组必得相同描述。
+ * 纯函数：无随机、无状态，相同基因组+栖息域必得相同描述。
+ * 陆地类群表与历史版本逐字一致（旧世界新物种命名不受本轮影响）。
  */
 
 export interface SpeciesDescription {
@@ -45,7 +51,7 @@ function hueColorChar(hue: number): string {
   return '绯';
 }
 
-/** 生态类群 → 类群字（按角色优先级命中）与拉丁属名 */
+/** 生态类群 → 类群字（按角色优先级命中）与拉丁属名（陆地） */
 const ARCHETYPES: Array<{
   test: (g: Genome) => boolean;
   base: string;
@@ -66,6 +72,63 @@ const ARCHETYPES: Array<{
   { test: (g) => g.size <= 0.65, base: '鼠', genus: 'Mus' },
   { test: () => true, base: '狐', genus: 'Vulpes' },
 ];
+
+/** 淡水类群表：湖泊与湿地生态位——伏击大鱼/群游小鱼/底栖虾螺 */
+const FRESHWATER_ARCHETYPES: Array<{
+  test: (g: Genome) => boolean;
+  base: string;
+  genus: string;
+}> = [
+  { test: (g) => g.aggression >= 0.5 && g.size >= 1.6, base: '鲶', genus: 'Silurus' },
+  { test: (g) => g.aggression >= 0.5 && g.size >= 0.9, base: '鲈', genus: 'Perca' },
+  { test: (g) => g.aggression >= 0.5, base: '虾', genus: 'Macrobrachium' },
+  { test: (g) => g.size >= 2.2, base: '鲟', genus: 'Acipenser' },
+  { test: (g) => g.sense >= 12, base: '鳜', genus: 'Siniperca' },
+  { test: (g) => g.speed >= 1.2, base: '鳟', genus: 'Salmo' },
+  { test: (g) => g.metabolism <= 0.7, base: '鳖', genus: 'Trionyx' },
+  { test: (g) => g.fear >= 0.6, base: '螺', genus: 'Lymnaea' },
+  { test: (g) => g.sociability >= 0.6 && g.size >= 1.2, base: '鲢', genus: 'Hypophthalmichthys' },
+  { test: (g) => g.sociability >= 0.6, base: '鲦', genus: 'Hemiculter' },
+  { test: (g) => g.size >= 1.7, base: '鳙', genus: 'Aristichthys' },
+  { test: (g) => g.size >= 1.3, base: '鲩', genus: 'Ctenopharyngodon' },
+  { test: (g) => g.size <= 0.65, base: '鳉', genus: 'Oryzias' },
+  { test: () => true, base: '鲫', genus: 'Carassius' },
+];
+
+/** 海洋类群表：远洋/礁区生态位——顶级鲨鲸/群游鲭鲱/底栖蟹星 */
+const OCEAN_ARCHETYPES: Array<{
+  test: (g: Genome) => boolean;
+  base: string;
+  genus: string;
+}> = [
+  { test: (g) => g.aggression >= 0.5 && g.size >= 1.6, base: '鲨', genus: 'Carcharias' },
+  { test: (g) => g.aggression >= 0.5 && g.size >= 0.9, base: '鳕', genus: 'Gadus' },
+  { test: (g) => g.aggression >= 0.5, base: '蟹', genus: 'Carcinus' },
+  { test: (g) => g.size >= 2.2, base: '鲸', genus: 'Balaena' },
+  { test: (g) => g.sense >= 12, base: '章鱼', genus: 'Octopus' },
+  { test: (g) => g.speed >= 1.2, base: '鲔', genus: 'Thunnus' },
+  { test: (g) => g.metabolism <= 0.7, base: '星', genus: 'Asterias' },
+  { test: (g) => g.fear >= 0.6, base: '鲱', genus: 'Clupea' },
+  { test: (g) => g.sociability >= 0.6 && g.size >= 1.2, base: '豚', genus: 'Delphinus' },
+  { test: (g) => g.sociability >= 0.6, base: '鲭', genus: 'Scomber' },
+  { test: (g) => g.size >= 1.7, base: '鳐', genus: 'Raja' },
+  { test: (g) => g.size >= 1.3, base: '鲷', genus: 'Sparus' },
+  { test: (g) => g.size <= 0.65, base: '鳀', genus: 'Engraulis' },
+  { test: () => true, base: '鲹', genus: 'Caranx' },
+];
+
+/** 栖息域 → 类群表（陆地表即历史表，保证旧世界命名不变） */
+const ARCHETYPES_BY_HABITAT: ReadonlyArray<typeof ARCHETYPES> = [
+  ARCHETYPES,
+  FRESHWATER_ARCHETYPES,
+  OCEAN_ARCHETYPES,
+];
+
+/** 水域物种的特征标签前缀（陆地物种不加前缀，与历史行为一致） */
+const HABITAT_TAG: Record<number, string> = {
+  [BIOME_FRESHWATER]: '淡水',
+  [BIOME_OCEAN]: '海洋',
+};
 
 /** 形体描述符：基因偏离触发，size 级描述符插在颜色前，其余直接缀在类群前 */
 const DESCRIPTORS: Array<{
@@ -134,9 +197,10 @@ const TAG_RULES: Array<{
 ];
 
 /**
- * 由基因组推导物种描述（俗名 + 拉丁双名 + 标签 + 生态位）。
+ * 由基因组 + 栖息域推导物种描述（俗名 + 拉丁双名 + 标签 + 生态位）。
+ * habitat 缺省视为陆地（旧调用方/旧快照行为不变）。
  */
-export function describeGenome(g: Genome): SpeciesDescription {
+export function describeGenome(g: Genome, habitat: number = BIOME_LAND): SpeciesDescription {
   // ---- 各基因归一化偏离（hue 只管颜色，不参与性状判断）----
   const devs = {} as Record<Exclude<GeneKey, 'hue'>, number>;
   let bestGene: Exclude<GeneKey, 'hue'> | null = null;
@@ -151,10 +215,11 @@ export function describeGenome(g: Genome): SpeciesDescription {
     }
   }
 
-  // ---- 类群（拉丁属名）----
-  let base = '狐';
-  let genus = 'Vulpes';
-  for (const a of ARCHETYPES) {
+  // ---- 类群（拉丁属名）：按栖息域分派类群表 ----
+  const table = ARCHETYPES_BY_HABITAT[habitat] ?? ARCHETYPES;
+  let base = table[table.length - 1].base;
+  let genus = table[table.length - 1].genus;
+  for (const a of table) {
     if (a.test(g)) {
       base = a.base;
       genus = a.genus;
@@ -191,6 +256,8 @@ export function describeGenome(g: Genome): SpeciesDescription {
 
   // ---- 特征标签 ----
   const tags: string[] = [];
+  const habitatTag = HABITAT_TAG[habitat];
+  if (habitatTag) tags.push(habitatTag); // 水域物种以栖息域标签开头
   for (const rule of TAG_RULES) {
     if (tags.length >= 4) break;
     const v = g[rule.key];

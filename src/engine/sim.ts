@@ -4,10 +4,17 @@ import { Rng } from './rng';
 import { SpeciesTable } from './species';
 import { SpatialHash } from './spatial';
 import {
+  BIOME_FRESHWATER,
+  BIOME_LAND,
+  BIOME_OCEAN,
   DEATH_CAUSE_KEYS,
+  TERRAIN_FRESH,
   TERRAIN_HAZARD,
   TERRAIN_NORMAL,
+  TERRAIN_OBSTACLE,
+  TERRAIN_OCEAN,
   emptyDeathCauses,
+  habitatOfTerrain,
   maxAgeOf,
   maxEnergyOf,
   type Agent,
@@ -74,6 +81,18 @@ const MATE_ENERGY_RATIO = 0.5;
 /** 深拷贝计数器（deathsByCause 是嵌套对象，浅拷贝会共享引用导致增量计算错乱） */
 function cloneCounters(c: SimCounters): SimCounters {
   return { ...c, deathsByCause: { ...c.deathsByCause } };
+}
+
+/**
+ * 栖息域硬隔离（2026-10-13 用户拍板）：能否进入地形值 t 的格子。
+ * 障碍格对所有生物都是真墙；陆域生物可走普通格与危险区；
+ * 淡水生物只待淡水格，海洋生物只待海洋格。
+ */
+function canEnter(habitat: number, t: number): boolean {
+  if (t === TERRAIN_OBSTACLE) return false;
+  if (habitat === BIOME_LAND) return t === TERRAIN_NORMAL || t === TERRAIN_HAZARD;
+  if (t === TERRAIN_FRESH) return habitat === BIOME_FRESHWATER;
+  return t === TERRAIN_OCEAN && habitat === BIOME_OCEAN;
 }
 
 export class Simulation {
@@ -165,10 +184,13 @@ export class Simulation {
   private spawnInitial(templates: SpeciesTemplate[]): void {
     for (const tpl of templates) {
       const founderGenome = genomeFromTemplate(tpl, this.rng);
-      const info = this.species.found(tpl.name, tpl.color, founderGenome, 0);
+      // 先为整支种群选定落域：优先匹配模板栖息域；世界里没有该圈域时
+      // 落在任意可通行格并随地形改域（引擎自洽优先）
+      const [, , hab] = this.randomPosFor(tpl.habitat ?? BIOME_LAND);
+      const info = this.species.found(tpl.name, tpl.color, founderGenome, 0, hab);
       for (let i = 0; i < tpl.count; i++) {
         const genome = genomeFromTemplate(tpl, this.rng);
-        const [x, y] = this.randomPassablePos();
+        const [x, y] = this.randomPosFor(hab);
         const [dx, dy] = this.rng.direction();
         this.agents.push({
           id: this.nextAgentId++,
@@ -191,13 +213,38 @@ export class Simulation {
     }
   }
 
-  private randomPassablePos(): [number, number] {
-    for (let tries = 0; tries < 60; tries++) {
+  /**
+   * 在指定栖息域内随机取点，返回 [x, y, 实际栖息域]。
+   * 随机 80 次未命中则线性扫描兜底（确定性）；该圈域不存在时退回任意
+   * 可通行格并随地形改域，保证任何 spec 都能落地。
+   */
+  private randomPosFor(habitatHint: number): [number, number, number] {
+    const w = this.world;
+    for (let tries = 0; tries < 80; tries++) {
       const x = this.rng.next() * this.spec.width;
       const y = this.rng.next() * this.spec.height;
-      if (this.world.passable(x | 0, y | 0)) return [x, y];
+      const cx = x | 0;
+      const cy = y | 0;
+      if (!w.passable(cx, cy)) continue;
+      const h = habitatOfTerrain(w.terrain[w.cellIndex(cx, cy)]);
+      if (h === habitatHint) return [x, y, h];
     }
-    return [this.spec.width / 2, this.spec.height / 2];
+    for (let i = 0; i < w.n; i++) {
+      const t = w.terrain[i];
+      if (t === TERRAIN_OBSTACLE) continue;
+      if (habitatOfTerrain(t) === habitatHint) {
+        return [(i % w.width) + 0.5, Math.floor(i / w.width) + 0.5, habitatHint];
+      }
+    }
+    for (let tries = 0; tries < 80; tries++) {
+      const x = this.rng.next() * this.spec.width;
+      const y = this.rng.next() * this.spec.height;
+      if (w.passable(x | 0, y | 0)) {
+        const h = habitatOfTerrain(w.terrain[w.cellIndex(x | 0, y | 0)]);
+        return [x, y, h];
+      }
+    }
+    return [this.spec.width / 2, this.spec.height / 2, BIOME_LAND];
   }
 
   /** 导出完整快照（结构化克隆友好，可直接存 IndexedDB 或用于分叉） */
@@ -365,7 +412,7 @@ export class Simulation {
     // 收缩（拥挤干扰视线），把每个体的邻居候选数锁在 π×K² 附近——性能硬保障。
     this.senseCap =
       Math.sqrt((w.width * w.height) / Math.max(1, this.agents.length)) * SENSE_CAP_K;
-    const ctx = { world: w, hash: this.hash, rng: this.rng, tick: t, senseCap: this.senseCap };
+    const ctx = { world: w, hash: this.hash, rng: this.rng, tick: t, senseCap: this.senseCap, habitat: BIOME_LAND };
     const maxPop = this.spec.rules.maxPopulation;
     const newborns: Agent[] = [];
 
@@ -393,6 +440,12 @@ export class Simulation {
       }
 
       // ---- 决策与移动 ----
+      // 栖息域由所在格推导（硬隔离保证个体永远站在本域格上；旧快照中
+      // 站进障碍格的个体按陆域处理，可自行走出）
+      const habitat = habitatOfTerrain(
+        w.terrain[w.cellIndex(clampCell(a.x, w.width), clampCell(a.y, w.height))],
+      );
+      ctx.habitat = habitat;
       const st = steer(a, ctx);
       a.intent = st.intent;
       a.dirX = st.dirX;
@@ -400,14 +453,15 @@ export class Simulation {
       let moved = 0;
       const step = a.genome.speed * st.effort;
       if (step > 0) {
-        moved = this.moveAgent(a, step);
+        moved = this.moveAgent(a, habitat, step);
       }
 
       // ---- 进食与危险区 ----
       const cx = clampCell(a.x, w.width);
       const cy = clampCell(a.y, w.height);
       const ci = w.cellIndex(cx, cy);
-      if (w.terrain[ci] === TERRAIN_NORMAL) {
+      const cellT = w.terrain[ci];
+      if (cellT === TERRAIN_NORMAL || cellT === TERRAIN_FRESH || cellT === TERRAIN_OCEAN) {
         // 能量满格时不进食：避免食物被白白销毁（守恒要求）
         const room = maxEnergyOf(a.genome.size) - a.energy;
         const food = w.food[ci];
@@ -419,7 +473,7 @@ export class Simulation {
           a.memoryY = a.y;
           a.memoryTick = t;
         }
-      } else if (w.terrain[ci] === TERRAIN_HAZARD) {
+      } else if (cellT === TERRAIN_HAZARD) {
         a.energy -= HAZARD_DMG;
         a.damageTag = 1;
         this.counters.dissipated += HAZARD_DMG;
@@ -760,30 +814,29 @@ export class Simulation {
     }
   }
 
-  /** 尝试朝 dirX/dirY 移动一步，返回实际位移（碰撞时尝试滑行/转向） */
-  private moveAgent(a: Agent, step: number): number {
-    // 内联 World.passable（全引擎最热路径之一，逐 tick 数千次调用）。
-    // 语义与 World.passable 完全一致：越界或障碍格不可通行；注意
-    // 分数坐标在 Uint8Array 上取值为 undefined（= 可通行），这里用
-    // 整数判定走快路径，避免分数键访问 TypedArray 的慢路径。
+  /**
+   * 尝试朝 dirX/dirY 移动一步，返回实际位移（被阻挡时尝试滑行/调头）。
+   *
+   * 2026-10-13 语义变更（用户拍板）：按「目标格」做真阻挡——障碍格与
+   * 非本栖息域格都不可进入。历史版本的分数坐标判定（TypedArray 取
+   * undefined = 可通行，障碍物形同装饰）已废除。
+   */
+  private moveAgent(a: Agent, habitat: number, step: number): number {
     const w = this.world;
     const W = w.width;
-    const terr = w.terrain;
     const nx = a.x + a.dirX * step;
     const ny = a.y + a.dirY * step;
     if (nx >= 0 && ny >= 0 && nx < W && ny < w.height) {
-      const idx = ny * W + nx;
-      if (idx !== (idx | 0) || terr[idx] !== 1) {
+      if (canEnter(habitat, w.terrain[(ny | 0) * W + (nx | 0)])) {
         a.x = nx;
         a.y = ny;
         return step;
       }
     }
-    // 滑行：先试只走 x，再试只走 y，都不行则调头
+    // 滑行：先试只走 x，再试只走 y，都不行则调头（贴岸/贴壁滑行）
     const nx2 = a.x + a.dirX * step;
     if (nx2 >= 0 && nx2 < W && a.y >= 0 && a.y < w.height) {
-      const idx = a.y * W + nx2;
-      if (idx !== (idx | 0) || terr[idx] !== 1) {
+      if (canEnter(habitat, w.terrain[(a.y | 0) * W + (nx2 | 0)])) {
         a.x = nx2;
         a.dirY = -a.dirY;
         return step * 0.8;
@@ -791,8 +844,7 @@ export class Simulation {
     }
     const ny2 = a.y + a.dirY * step;
     if (ny2 >= 0 && ny2 < w.height && a.x >= 0 && a.x < W) {
-      const idx = ny2 * W + a.x;
-      if (idx !== (idx | 0) || terr[idx] !== 1) {
+      if (canEnter(habitat, w.terrain[(ny2 | 0) * W + (a.x | 0)])) {
         a.y = ny2;
         a.dirX = -a.dirX;
         return step * 0.8;
@@ -842,6 +894,13 @@ export class Simulation {
     }
   }
 
+  /** 幼体落点合法性：界内且属于父本栖息域（硬隔离从出生开始生效） */
+  private canBirthAt(habitat: number, x: number, y: number): boolean {
+    const w = this.world;
+    if (x < 0 || y < 0 || x >= w.width || y >= w.height) return false;
+    return canEnter(habitat, w.terrain[(y | 0) * w.width + (x | 0)]);
+  }
+
   private reproduce(parent: Agent, t: number): Agent {
     const total = parent.energy;
     const childEnergy = total * REPRO_SPLIT;
@@ -853,13 +912,18 @@ export class Simulation {
     const [ox, oy] = this.rng.disc(1.5);
     let x = parent.x + ox;
     let y = parent.y + oy;
-    if (!this.world.passable(x | 0, y | 0)) {
+    const hab = habitatOfTerrain(
+      this.world.terrain[
+        this.world.cellIndex(clampCell(parent.x, this.world.width), clampCell(parent.y, this.world.height))
+      ],
+    );
+    if (!this.canBirthAt(hab, x, y)) {
       x = parent.x;
       y = parent.y;
     }
     const [dx, dy] = this.rng.direction();
 
-    const assigned = this.species.assign(genome, t);
+    const assigned = this.species.assign(genome, t, hab);
     if (assigned.speciated) {
       this.counters.speciations++;
       this.pendingEvents.push(assigned.event!);
@@ -939,13 +1003,16 @@ export class Simulation {
     const [ox, oy] = this.rng.disc(1.5);
     let x = a.x + ox;
     let y = a.y + oy;
-    if (!this.world.passable(x | 0, y | 0)) {
+    const hab = habitatOfTerrain(
+      this.world.terrain[this.world.cellIndex(clampCell(a.x, this.world.width), clampCell(a.y, this.world.height))],
+    );
+    if (!this.canBirthAt(hab, x, y)) {
       x = a.x;
       y = a.y;
     }
     const [dx, dy] = this.rng.direction();
 
-    const assigned = this.species.assign(genome, t);
+    const assigned = this.species.assign(genome, t, hab);
     if (assigned.speciated) {
       this.counters.speciations++;
       this.pendingEvents.push(assigned.event!);
@@ -1032,7 +1099,8 @@ export class Simulation {
           const dy = gy + 0.5 - y;
           if (dx * dx + dy * dy > r2) continue;
           const i = w.cellIndex(gx, gy);
-          if (w.terrain[i] !== TERRAIN_NORMAL) continue;
+          const t = w.terrain[i];
+          if (t === TERRAIN_OBSTACLE || t === TERRAIN_HAZARD) continue;
           const cap = w.foodCap(i);
           if (cap <= 0) continue;
           if (kind === 'bless') {
