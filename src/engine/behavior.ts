@@ -15,6 +15,8 @@ export interface BehaviorContext {
   hash: SpatialHash;
   rng: Rng;
   tick: number;
+  /** 本 tick 的有效感知半径上限（密度自适应收缩，min(基因 sense, senseCap) 为实际半径） */
+  senseCap: number;
 }
 
 export interface SteerResult {
@@ -50,7 +52,8 @@ const result: SteerResult = { dirX: 1, dirY: 0, effort: 0.5, intent: 0, prey: nu
 export function steer(self: Agent, ctx: BehaviorContext): SteerResult {
   const { world, hash, rng, tick } = ctx;
   const g = self.genome;
-  const sense = g.sense;
+  // 实际感知半径：基因 sense 被密度上限收缩（拥挤干扰视线）
+  const sense = Math.min(g.sense, ctx.senseCap);
   const r2 = sense * sense;
   const maxE = maxEnergyOf(g.size);
   const sizeThreat = g.size * THREAT_RATIO;

@@ -28,7 +28,16 @@ import { World } from './world';
 
 const EAT_RATE = 1.2; // 进食速度（能量/tick）
 const BASE_METAB = 0.03; // 基础代谢系数
-const SENSE_COST = 0.15; // 感知半径的代谢代价系数
+/** 感知半径的代谢代价系数（平方级）：sense 12 → 基础代谢 ×15.4，sense 16 → ×26.6。
+ * 旧线性代价（0.15×sense）近乎免费，军备竞赛把 sense 推到 16+，而邻居候选
+ * ∝ 密度×sense² 直接拖垮高种群性能——「眼睛很贵」是刻意的生态设计（2026-10-13 拍板）。 */
+const SENSE_COST = 0.05;
+/** 密度自适应感知收缩系数：实际感知半径 = min(sense, √(面积/种群)×K)。
+ * 候选 ∝ r²×局部密度（生物因食物/群聚成团，聚集区局部密度可达平均的 5~10 倍）。
+ * K=1.6 实测校准：万级聚集种群单 tick ~28ms（修复前同场景 100ms+）；
+ * 拥挤世界视野 3~5 格仍能看到十几个邻居，信息量与稀疏世界的远视野相当。
+ * 低密度世界 rCap 远大于 sense，完全无感。生态解释：「拥挤干扰视线」。 */
+const SENSE_CAP_K = 1.6;
 const MOVE_COST = 0.02; // 移动能量代价系数（× 体型 × 实际位移）
 const BITE = 10; // 咬合基础能量（× 攻击者体型）
 const ATTACK_COST = 0.5; // 每次攻击的消耗
@@ -122,6 +131,8 @@ export class Simulation {
   /** 稳态检测：种群顶格且繁殖停滞的起始 tick */
   private stagnantSince: number | null = null;
   private stagnationEventAt = -Infinity;
+  /** 本 tick 的有效感知半径上限（密度自适应，见 SENSE_CAP_K；每 tickOnce 开头重算） */
+  private senseCap = Infinity;
   private birthsAtLastCheck = 0;
 
   constructor(spec: WorldSpec) {
@@ -350,7 +361,11 @@ export class Simulation {
     for (let i = 0; i < this.agents.length; i++) this.hash.insert(this.agents[i]);
 
     const w = this.world;
-    const ctx = { world: w, hash: this.hash, rng: this.rng, tick: t };
+    // 密度自适应感知收缩：实际感知半径 = min(基因 sense, rCap)，rCap 随种群密度
+    // 收缩（拥挤干扰视线），把每个体的邻居候选数锁在 π×K² 附近——性能硬保障。
+    this.senseCap =
+      Math.sqrt((w.width * w.height) / Math.max(1, this.agents.length)) * SENSE_CAP_K;
+    const ctx = { world: w, hash: this.hash, rng: this.rng, tick: t, senseCap: this.senseCap };
     const maxPop = this.spec.rules.maxPopulation;
     const newborns: Agent[] = [];
 
@@ -420,8 +435,9 @@ export class Simulation {
       // ---- 代谢（能量离开系统；暮年代谢抬升，老者先饿，逼出种群周转）----
       const lifeFrac = a.age / maxAgeOf(a.genome.size);
       const senescence = 1 + SENESCENCE * lifeFrac * lifeFrac;
+      const s = a.genome.sense;
       const drain =
-        (BASE_METAB * a.genome.size * a.genome.metabolism * (1 + SENSE_COST * a.genome.sense) +
+        (BASE_METAB * a.genome.size * a.genome.metabolism * (1 + SENSE_COST * s * s) +
           MOVE_COST * a.genome.size * moved) * senescence;
       a.energy -= drain;
       this.counters.dissipated += drain;
@@ -882,7 +898,8 @@ export class Simulation {
   private findMate(self: Agent, t: number): Agent | null {
     let best: Agent | null = null;
     let bestD2 = Infinity;
-    const r = self.genome.sense;
+    // 求偶视野同样受密度自适应收缩约束
+    const r = Math.min(self.genome.sense, this.senseCap);
     // d2 >= bestD2 的平局取先者语义依赖 forEachNear 的遍历顺序，勿改循环结构
     this.hash.forEachNear(self.x, self.y, r, (other) => {
       if (other === self || !other.alive || other.speciesId !== self.speciesId) return;
@@ -974,6 +991,108 @@ export class Simulation {
     this.counters.dissipated += a.energy;
     this.dropCorpse(a);
     this.removeAgent(index);
+  }
+
+  // -------------------------------------------------------------------------
+  // 神迹（tick 边界注入的空间级干预；rng 消耗走 sim.rng，确定性语义同 updateRules）
+  // -------------------------------------------------------------------------
+
+  /**
+   * 释放神迹，返回受影响格数 / 击杀数（事件文案用）。
+   *
+   * - bloom（雨露）：圆内可通行格注入食物（钳到该格承载上限）；
+   * - bless（丰饶）：圆内可通行格食物回满承载上限；
+   * - smite（天罚）：圆内个体随机击杀 power 比例（0.01~0.5），死因归天灾。
+   *
+   * via 为干预来源前缀（如 '按 AI 建议'），仅影响事件文案。
+   * bloom/bless 只动环境食物库（与 regrowFood 同性质，不入能量账本）；
+   * smite 走现有死亡入账，账本恒等式保持。
+   */
+  miracle(
+    kind: 'bloom' | 'smite' | 'bless',
+    x: number,
+    y: number,
+    radius: number,
+    power: number,
+    via?: string,
+  ): number {
+    const w = this.world;
+    const label = `实验者${via ?? ''}降下神迹`;
+    const r2 = radius * radius;
+    const gx0 = Math.max(0, Math.floor(x - radius));
+    const gx1 = Math.min(w.width - 1, Math.ceil(x + radius));
+    const gy0 = Math.max(0, Math.floor(y - radius));
+    const gy1 = Math.min(w.height - 1, Math.ceil(y + radius));
+
+    if (kind === 'bloom' || kind === 'bless') {
+      let affected = 0;
+      for (let gy = gy0; gy <= gy1; gy++) {
+        for (let gx = gx0; gx <= gx1; gx++) {
+          const dx = gx + 0.5 - x;
+          const dy = gy + 0.5 - y;
+          if (dx * dx + dy * dy > r2) continue;
+          const i = w.cellIndex(gx, gy);
+          if (w.terrain[i] !== TERRAIN_NORMAL) continue;
+          const cap = w.foodCap(i);
+          if (cap <= 0) continue;
+          if (kind === 'bless') {
+            w.food[i] = cap;
+          } else {
+            const per = Math.min(8, Math.max(0.5, power));
+            w.food[i] = Math.min(cap, w.food[i] + per);
+          }
+          affected++;
+        }
+      }
+      const name = kind === 'bloom' ? '雨露' : '丰饶';
+      const detail =
+        kind === 'bloom'
+          ? `在 (${Math.round(x)}, ${Math.round(y)}) 半径 ${Math.round(radius)} 内撒下食物`
+          : `(${Math.round(x)}, ${Math.round(y)}) 半径 ${Math.round(radius)} 内土地回满生机`;
+      this.pendingEvents.push({
+        t: this.tick,
+        kind: 'miracle',
+        msg: `${label}「${name}」：${detail}，${affected} 格土地受益`,
+      });
+      return affected;
+    }
+
+    // smite（天罚）：圆内个体随机击杀 power 比例
+    const ratio = Math.min(0.5, Math.max(0.005, power));
+    const inRange: number[] = [];
+    for (let i = 0; i < this.agents.length; i++) {
+      const a = this.agents[i];
+      if (!a.alive) continue;
+      const dx = a.x - x;
+      const dy = a.y - y;
+      if (dx * dx + dy * dy > r2) continue;
+      inRange.push(i);
+    }
+    let target = Math.floor(inRange.length * ratio);
+    if (target < 1 && inRange.length > 0) target = 1;
+    // Fisher–Yates 洗牌取前 target 个（rng 走 sim.rng，确定性）
+    for (let i = inRange.length - 1; i > 0; i--) {
+      const j = this.rng.int(i + 1);
+      const tmp = inRange[i];
+      inRange[i] = inRange[j];
+      inRange[j] = tmp;
+    }
+    inRange.length = Math.min(target, inRange.length);
+    inRange.sort((a, b) => b - a); // 降序：swap-remove 只会挪动已处理区间，安全
+    let killed = 0;
+    for (const idx of inRange) {
+      const a = this.agents[idx];
+      if (!a.alive) continue;
+      a.damageTag = 1; // 死因归天灾（hazard）
+      this.dieAt(idx);
+      killed++;
+    }
+    this.pendingEvents.push({
+      t: this.tick,
+      kind: 'miracle',
+      msg: `${label}「天罚」：雷落 (${Math.round(x)}, ${Math.round(y)})，${killed} 只生灵殒命`,
+    });
+    return killed;
   }
 
   /** 累计某物种的一例死亡（全局账本 + 采样窗口增量） */

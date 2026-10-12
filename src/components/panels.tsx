@@ -663,6 +663,7 @@ const EVENT_COLOR: Record<SimEvent['kind'], string> = {
   rule: '#38bdf8',
   milestone: '#fbbf24',
   system: '#7d8899',
+  miracle: '#e879f9',
 };
 
 export function EventFeed({ expId }: { expId: string }) {

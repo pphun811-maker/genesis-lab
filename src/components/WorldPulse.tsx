@@ -45,6 +45,7 @@ const KIND_COLOR: Record<SimEvent['kind'], string> = {
   rule: '#38bdf8',
   milestone: '#fbbf24',
   system: MUTED,
+  miracle: '#e879f9',
 };
 
 /** 大事记收录的事件种类 */

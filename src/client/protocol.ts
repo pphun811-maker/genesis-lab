@@ -75,6 +75,17 @@ export type ToWorker =
       /** 干预来源前缀（如 '按 AI 建议'），仅影响事件文案 */
       via?: string;
     }
+  | {
+      type: 'miracle';
+      kind: 'bloom' | 'smite' | 'bless';
+      /** 圆心（世界坐标）；AI 提案时为主线程算好的目标物种质心 */
+      x: number;
+      y: number;
+      radius: number;
+      /** bloom: 每格注入食物量；smite: 圆内击杀比例（0.01~0.5）；bless: 忽略 */
+      power: number;
+      via?: string;
+    }
   | { type: 'snapshot'; reqId: number }
   | { type: 'inspect'; agentId: number; reqId: number };
 

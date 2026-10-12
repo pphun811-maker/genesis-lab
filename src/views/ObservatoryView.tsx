@@ -13,6 +13,7 @@ import { PlaybackBar } from '../components/PlaybackBar';
 import { GuideOverlay, dismissGuide, shouldShowGuide } from '../components/GuideOverlay';
 import { WorldPulse } from '../components/WorldPulse';
 import { NarratorBar } from '../components/NarratorBar';
+import { MiraclesPanel } from '../components/MiraclesPanel';
 import { AgentInspector, EventFeed, RulesPanel, SpeciesPanel, type RulesPatch } from '../components/panels';
 
 type Tab = 'metrics' | 'species' | 'phylo' | 'agent' | 'events' | 'rules';
@@ -103,6 +104,7 @@ export function ObservatoryView() {
   const [follow, setFollow] = useState(false);
   const [rules, setRules] = useState<RulesPatch | null>(null);
   const [showGuide, setShowGuide] = useState(false);
+  const [showMiracles, setShowMiracles] = useState(false);
   const [highlightSpeciesId, setHighlightSpeciesId] = useState<number | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   // 侧边栏宽度：初始值从 localStorage 读取（懒初始化，只读一次）
@@ -426,6 +428,17 @@ export function ObservatoryView() {
           ⑂ 分叉实验
         </button>
         <button
+          onClick={() => setShowMiracles((v) => !v)}
+          className={`ml-2 rounded border px-3 py-1 text-xs transition-colors ${
+            showMiracles
+              ? 'border-[#e879f9]/60 bg-[#e879f9]/15 text-[#e879f9]'
+              : 'border-[#e879f9]/40 bg-[#e879f9]/10 text-[#e879f9] hover:bg-[#e879f9]/20'
+          }`}
+          title="降下神迹：雨露（撒食）/ 天罚（击杀）/ 丰饶（食物回满），以选中个体为中心"
+        >
+          ✦ 神迹
+        </button>
+        <button
           onClick={() => {
             const record = useExperiments.getState().records[id];
             if (!record) return;
@@ -575,6 +588,15 @@ export function ObservatoryView() {
           </div>
           {/* 世界之声：画布底部解说字幕条（位于图例与提示之上） */}
           <NarratorBar expId={id} rules={rules} onApplyRules={handleApplyRules} />
+          {/* 神迹面板：以选中个体为落点的三类空间级干预 */}
+          {showMiracles && (
+            <MiraclesPanel
+              expId={id}
+              currentTick={stats.tick}
+              center={agent !== null ? { x: agent.x, y: agent.y } : null}
+              onClose={() => setShowMiracles(false)}
+            />
+          )}
           {/* 热力叠加切换：看哪里扎堆（密度）/ 哪里在死人（死亡） */}
           <div className="pointer-events-auto absolute bottom-3 right-3 z-10 flex gap-1 rounded-full bg-black/50 p-0.5">
             {OVERLAY_MODES.map((m) => (

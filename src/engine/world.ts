@@ -113,6 +113,11 @@ export class World {
     return y * this.width + x;
   }
 
+  /** 某格的食物承载上限（肥沃度 × 每格上限；障碍格为 0） */
+  foodCap(i: number): number {
+    return this.fertility[i] * this.maxPerCell;
+  }
+
   /** 食物再生：为控制开销，每 4 tick 全场执行一次、一次补足 4 份 */
   regrowFood(tick: number): void {
     const food = this.food;

@@ -1,5 +1,5 @@
 import type { Agent, SimState, WorldSpec } from '../engine/types';
-import type { FrameData, FromWorker, ToWorker } from './protocol';
+import { AGENT_STRIDE, type FrameData, type FromWorker, type ToWorker } from './protocol';
 
 /**
  * SimClient：主线程侧单个实验的模拟控制 API。
@@ -127,6 +127,18 @@ export class SimClient {
     this.send({ type: 'updateRules', patch, via });
   }
 
+  /** 释放神迹（tick 边界注入的空间级干预）；power 语义按 kind 解释 */
+  miracle(
+    kind: 'bloom' | 'smite' | 'bless',
+    x: number,
+    y: number,
+    radius: number,
+    power: number,
+    via?: string,
+  ): void {
+    this.send({ type: 'miracle', kind, x, y, radius, power, via });
+  }
+
   snapshot(): Promise<SimState> {
     return new Promise((resolve) => {
       const reqId = reqSeq++;
@@ -147,4 +159,32 @@ export class SimClient {
     this.disposed = true;
     this.worker.terminate();
   }
+}
+
+/**
+ * 从最新帧计算某物种存活个体的质心与数量（主线程一次性查询用，非热路径）。
+ * 找不到该物种的存活个体时返回 null。
+ */
+export function speciesCentroidOf(
+  frame: FrameData | null,
+  speciesId: number,
+): { x: number; y: number; count: number } | null {
+  if (!frame) return null;
+  // speciesIdx（帧内下标）→ 是否目标物种
+  const idxById = new Map<number, number>();
+  for (let i = 0; i < frame.species.length; i++) {
+    if (frame.species[i].id === speciesId) idxById.set(i, speciesId);
+  }
+  let count = 0;
+  let sx = 0;
+  let sy = 0;
+  const agents = frame.agents;
+  for (let o = 0; o < agents.length; o += AGENT_STRIDE) {
+    if (!idxById.has(agents[o + 6] | 0)) continue;
+    sx += agents[o + 1];
+    sy += agents[o + 2];
+    count++;
+  }
+  if (count === 0) return null;
+  return { x: sx / count, y: sy / count, count };
 }

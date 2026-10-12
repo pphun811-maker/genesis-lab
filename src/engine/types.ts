@@ -249,7 +249,7 @@ export interface MetricSample {
   deathHeat?: Float32Array;
 }
 
-export type SimEventKind = 'speciation' | 'extinction' | 'rule' | 'milestone' | 'system';
+export type SimEventKind = 'speciation' | 'extinction' | 'rule' | 'milestone' | 'system' | 'miracle';
 
 export interface SimEvent {
   t: number;

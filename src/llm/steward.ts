@@ -141,10 +141,25 @@ export interface StewardChange {
   reason: string;
 }
 
+/** 神迹动作：以 target 物种当前聚集地（质心）为中心的空间级干预 */
+export interface StewardMiracle {
+  kind: 'bloom' | 'smite' | 'bless';
+  /** 目标物种名（主线程解析为该物种质心坐标） */
+  target: string;
+  /** 作用半径（世界格） */
+  radius: number;
+  /** bloom: 每格注入食物量（1~8）；smite: 圆内击杀比例（0.01~0.5）；bless: 忽略 */
+  power: number;
+  reason: string;
+}
+
 export interface StewardPlan {
   /** 一句话说明这组调整的整体思路 */
   summary: string;
-  changes: StewardChange[];
+  /** 规则滑杆调整（经清洗） */
+  rules: StewardChange[];
+  /** 神迹动作（经清洗，target 均为现存物种） */
+  miracles: StewardMiracle[];
 }
 
 /** 把数值 clamp 进 [min, max] 并按 step 取整（消除浮点尾数） */
@@ -182,26 +197,9 @@ function dedupe(changes: StewardChange[]): StewardChange[] {
   return [...byKey.values()];
 }
 
-/** 清洗模型输出：无效 key 丢弃 → 类型转换 → clamp → 过滤无变化项 → 去重 */
-function sanitizePlan(summary: string, rawChanges: Array<{ key: string; value: unknown; reason: string }>, current: StewardRules): StewardPlan {
-  const changes: StewardChange[] = [];
-  for (const c of rawChanges) {
-    const key = c.key as StewardKey;
-    const meta = STEWARD_KEYS[key];
-    if (meta === undefined) continue;
-    const value = coerceValue(key, c.value);
-    if (value === null) continue;
-    const finalValue = meta.kind === 'number' ? clampNumber(key, value as number) : value;
-    const cur = meta.read(current);
-    const unchanged =
-      meta.kind === 'number'
-        ? Math.abs((cur as number) - (finalValue as number)) < 1e-9
-        : cur === finalValue;
-    if (unchanged) continue;
-    changes.push({ key, value: finalValue, reason: c.reason });
-  }
-  return { summary: summary.trim(), changes: dedupe(changes).slice(0, 6) };
-}
+// ---------------------------------------------------------------------------
+// LLM 请求与解析
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // LLM 请求与解析
@@ -209,12 +207,23 @@ function sanitizePlan(summary: string, rawChanges: Array<{ key: string; value: u
 
 const planSchema = z.object({
   summary: z.string(),
-  changes: z.array(
-    z.object({
-      key: z.string(),
-      value: z.union([z.number(), z.boolean(), z.string()]),
-      reason: z.string(),
-    }),
+  actions: z.array(
+    z.discriminatedUnion('type', [
+      z.object({
+        type: z.literal('rule'),
+        key: z.string(),
+        value: z.union([z.number(), z.boolean(), z.string()]),
+        reason: z.string(),
+      }),
+      z.object({
+        type: z.literal('miracle'),
+        kind: z.enum(['bloom', 'smite', 'bless']),
+        target: z.string(),
+        radius: z.union([z.number(), z.string()]).optional(),
+        power: z.union([z.number(), z.string()]).optional(),
+        reason: z.string(),
+      }),
+    ]),
   ),
 });
 
@@ -226,14 +235,21 @@ function errText(err: unknown): string {
 function stewardSystemPrompt(): string {
   return [
     '你是 Genesis Lab（人工生命演化沙盘）的「世界管家」。',
-    '用户会给出世界摘要、当前规则值与一个自然语言需求；你的任务是输出一份规则调整方案（JSON）。',
+    '用户会给出世界摘要、当前规则值与一个自然语言需求；你的任务是输出一份世界干预方案（JSON）。',
+    '可用的动作分两类：',
+    '1. 规则调整：{"type":"rule","key":"<规则键>","value":<目标值>,"reason":"<一句理由>"}',
+    '2. 神迹（空间级干预，以某物种当前聚集地为中心）：{"type":"miracle","kind":"<bloom|smite|bless>","target":"<物种名>","radius":<半径>,"power":<强度>,"reason":"<一句理由>"}',
+    '   - bloom 雨露（撒食）：power = 每格注入食物量（1~8），适合投喂弱势物种、引导迁徙；',
+    '   - smite 天罚（定向击杀）：power = 击杀该物种比例（0.01~0.5），适合削弱过强物种、平衡世界；',
+    '   - bless 丰饶（区域食物回满）：power 略去，适合拯救饥荒中的物种；',
+    '   - target 必须使用世界摘要中出现的物种名（原文照抄）。',
     '约束：',
-    '1. 只能调整清单里列出的规则键，不做任何清单之外的操作；',
-    '2. 只提出与需求真正相关的调整（0~4 项），不要为凑数而改；若现有规则已满足需求，changes 返回空数组并在 summary 里说明；',
-    '3. 数值必须在每个键标注的取值范围内，且贴合当前值做适度调整（一次调整通常不超过当前值的数倍）；',
-    '4. 每项调整给一句中文理由，说明它如何服务于需求；',
+    '1. 只能使用上述两类动作，不做任何清单之外的操作；',
+    '2. 只提出与需求真正相关的动作（0~5 项），不要为凑数而改；若现状已满足需求，actions 返回空数组并在 summary 里说明；',
+    '3. 规则数值必须在每个键标注的取值范围内，且贴合当前值做适度调整；',
+    '4. 需求明确指向「削弱 / 打压某物种」时优先用 smite 神迹，而不是只动全局规则；「投喂 / 帮扶某物种」优先 bloom 或 bless；',
     '5. summary 用一句中文概括整体思路；',
-    '6. 只输出一个 JSON 对象：{"summary":"...","changes":[{"key":"...","value":...,"reason":"..."}]}，不要输出任何解释或 Markdown 围栏。',
+    '6. 只输出一个 JSON 对象：{"summary":"...","actions":[...]}，不要输出任何解释或 Markdown 围栏。',
   ].join('\n');
 }
 
@@ -249,8 +265,67 @@ function rulesForPrompt(current: StewardRules): string {
     .join('\n');
 }
 
+/** 神迹参数值域（UI 滑杆与清洗共用） */
+export const MIRACLE_LIMITS = {
+  radius: { min: 5, max: 60, default: 20 },
+  bloom: { min: 1, max: 8, default: 3 },
+  smite: { min: 0.01, max: 0.5, default: 0.1 },
+} as const;
+
+const MIRACLE_RADIUS_DEFAULT = MIRACLE_LIMITS.radius.default;
+
+const clampRange = (v: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, v));
+
+function toNumber(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string') {
+    const n = Number(v);
+    if (v.trim() !== '' && Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+/** 清洗神迹动作：物种名必须在现存列表内、半径与强度钳制、同 (kind,target) 去重取最后 */
+function sanitizeMiracles(
+  raw: Array<{ kind: 'bloom' | 'smite' | 'bless'; target: string; radius?: unknown; power?: unknown; reason: string }>,
+  speciesNames: ReadonlySet<string>,
+): StewardMiracle[] {
+  const byKey = new Map<string, StewardMiracle>();
+  for (const m of raw) {
+    const target = m.target.trim();
+    if (target === '' || !speciesNames.has(target)) continue;
+    const radiusRaw = toNumber(m.radius);
+    const powerRaw = toNumber(m.power);
+    const radius =
+      radiusRaw === null
+        ? MIRACLE_RADIUS_DEFAULT
+        : clampRange(radiusRaw, MIRACLE_LIMITS.radius.min, MIRACLE_LIMITS.radius.max);
+    let power = 0;
+    if (m.kind === 'bloom') {
+      power =
+        powerRaw === null
+          ? MIRACLE_LIMITS.bloom.default
+          : clampRange(powerRaw, MIRACLE_LIMITS.bloom.min, MIRACLE_LIMITS.bloom.max);
+    } else if (m.kind === 'smite') {
+      power =
+        powerRaw === null
+          ? MIRACLE_LIMITS.smite.default
+          : clampRange(powerRaw, MIRACLE_LIMITS.smite.min, MIRACLE_LIMITS.smite.max);
+    }
+    byKey.set(`${m.kind}:${target}`, {
+      kind: m.kind,
+      target,
+      radius: Number(radius.toFixed(1)),
+      power,
+      reason: m.reason,
+    });
+  }
+  return [...byKey.values()].slice(0, 6);
+}
+
 /** 解析并校验模型输出的方案 JSON，清洗后返回 StewardPlan */
-function parsePlan(raw: string, current: StewardRules): StewardPlan {
+function parsePlan(raw: string, current: StewardRules, speciesNames: ReadonlySet<string>): StewardPlan {
   let data: unknown;
   try {
     data = JSON.parse(raw);
@@ -263,24 +338,52 @@ function parsePlan(raw: string, current: StewardRules): StewardPlan {
     const where = issue.path.length > 0 ? issue.path.join('.') : '(根字段)';
     throw new Error(`JSON 字段校验未通过：${where}：${issue.message}`);
   }
-  return sanitizePlan(result.data.summary, result.data.changes, current);
+  const rules: StewardChange[] = [];
+  const miracles: Array<{ kind: 'bloom' | 'smite' | 'bless'; target: string; radius?: unknown; power?: unknown; reason: string }> = [];
+  for (const action of result.data.actions) {
+    if (action.type === 'rule') {
+      const key = action.key as StewardKey;
+      const meta = STEWARD_KEYS[key];
+      if (meta === undefined) continue;
+      const value = coerceValue(key, action.value);
+      if (value === null) continue;
+      const finalValue = meta.kind === 'number' ? clampNumber(key, value as number) : value;
+      const cur = meta.read(current);
+      const unchanged =
+        meta.kind === 'number'
+          ? Math.abs((cur as number) - (finalValue as number)) < 1e-9
+          : cur === finalValue;
+      if (unchanged) continue;
+      rules.push({ key, value: finalValue, reason: action.reason });
+    } else {
+      miracles.push(action);
+    }
+  }
+  return {
+    summary: result.data.summary.trim(),
+    rules: dedupe(rules).slice(0, 6),
+    miracles: sanitizeMiracles(miracles, speciesNames),
+  };
 }
 
 /**
- * 请求一份世界调整方案。
+ * 请求一份世界干预方案（规则调整 + 神迹动作）。
  *
- * @param digest   世界摘要（observer.buildWorldDigest 的产物）
- * @param current  当前规则值（观察舱 rules state）
- * @param request  玩家的自然语言需求
- * @param settings 语言模型连接配置
+ * @param digest       世界摘要（observer.buildWorldDigest 的产物）
+ * @param current      当前规则值（观察舱 rules state）
+ * @param request      玩家的自然语言需求
+ * @param settings     语言模型连接配置
+ * @param speciesNames 现存物种名集合（用于校验神迹目标；空集 = 全部神迹项被丢弃）
  */
 export async function requestStewardPlan(
   digest: string,
   current: StewardRules,
   request: string,
   settings: LlmSettings,
+  speciesNames: readonly string[] = [],
 ): Promise<StewardPlan> {
   const system = stewardSystemPrompt();
+  const names = new Set(speciesNames);
   const user = [
     '【世界摘要】',
     digest,
@@ -290,14 +393,14 @@ export async function requestStewardPlan(
     '',
     `【玩家需求】${request.trim()}`,
     '',
-    '请输出规则调整方案 JSON。只输出 JSON 本体。',
+    '请输出世界干预方案 JSON。只输出 JSON 本体。',
   ].join('\n');
 
   // 第一次尝试
   let firstPlan: StewardPlan | null = null;
   let firstProblem = '';
   try {
-    firstPlan = parsePlan(await chatJson(settings, system, user), current);
+    firstPlan = parsePlan(await chatJson(settings, system, user), current, names);
   } catch (err) {
     if (err instanceof LlmHttpError) {
       // 服务端层面的失败（鉴权、限流、宕机等），重试没有意义，直接抛出
@@ -314,17 +417,17 @@ export async function requestStewardPlan(
     '',
     '【你上一次输出的方案存在以下问题，必须修正】',
     firstProblem,
-    '请重新输出一份完整、合法的调整方案 JSON。仍然只输出 JSON 本体，不要解释。',
+    '请重新输出一份完整、合法的干预方案 JSON。仍然只输出 JSON 本体，不要解释。',
   ].join('\n');
 
   try {
-    return parsePlan(await chatJson(settings, system, retryUser), current);
+    return parsePlan(await chatJson(settings, system, retryUser), current, names);
   } catch (err) {
     if (err instanceof LlmHttpError) {
       throw new Error(`调用语言模型失败：${errText(err)}`);
     }
     throw new Error(
-      `两次尝试都未能生成合法的调整方案。首次问题：${firstProblem || '未知'}；重试问题：${errText(err)}`,
+      `两次尝试都未能生成合法的干预方案。首次问题：${firstProblem || '未知'}；重试问题：${errText(err)}`,
     );
   }
 }

@@ -204,6 +204,12 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
         postFrame();
         break;
       }
+      case 'miracle': {
+        if (!sim) return;
+        sim.miracle(msg.kind, msg.x, msg.y, msg.radius, msg.power, msg.via);
+        postFrame();
+        break;
+      }
       case 'snapshot': {
         if (!sim) return;
         post({ type: 'snapshot', reqId: msg.reqId, state: sim.toState() });
