@@ -114,14 +114,17 @@ export class SimClient {
     this.send({ type: 'step', ticks });
   }
 
-  updateRules(patch: {
-    mutationRate?: number;
-    foodRegrow?: number;
-    maxPopulation?: number;
-    sexualReproduction?: boolean;
-    disasters?: { enabled: boolean; severity: number };
-  }): void {
-    this.send({ type: 'updateRules', patch });
+  updateRules(
+    patch: {
+      mutationRate?: number;
+      foodRegrow?: number;
+      maxPopulation?: number;
+      sexualReproduction?: boolean;
+      disasters?: { enabled: boolean; severity: number };
+    },
+    via?: string,
+  ): void {
+    this.send({ type: 'updateRules', patch, via });
   }
 
   snapshot(): Promise<SimState> {

@@ -72,6 +72,8 @@ export type ToWorker =
         sexualReproduction?: boolean;
         disasters?: { enabled: boolean; severity: number };
       };
+      /** 干预来源前缀（如 '按 AI 建议'），仅影响事件文案 */
+      via?: string;
     }
   | { type: 'snapshot'; reqId: number }
   | { type: 'inspect'; agentId: number; reqId: number };

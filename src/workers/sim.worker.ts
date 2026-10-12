@@ -200,7 +200,7 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
       }
       case 'updateRules': {
         if (!sim) return;
-        sim.updateRules(msg.patch);
+        sim.updateRules(msg.patch, msg.via);
         postFrame();
         break;
       }

@@ -281,13 +281,20 @@ export class Simulation {
   // 规则热修改
   // -------------------------------------------------------------------------
 
-  updateRules(patch: {
-    mutationRate?: number;
-    foodRegrow?: number;
-    maxPopulation?: number;
-    sexualReproduction?: boolean;
-    disasters?: { enabled: boolean; severity: number };
-  }): void {
+  /**
+   * 规则热修改。via 为干预来源前缀（如 '按 AI 建议'），仅影响事件文案——
+   * 数值路径完全一致，两次干预之间的确定性不受影响。
+   */
+  updateRules(
+    patch: {
+      mutationRate?: number;
+      foodRegrow?: number;
+      maxPopulation?: number;
+      sexualReproduction?: boolean;
+      disasters?: { enabled: boolean; severity: number };
+    },
+    via?: string,
+  ): void {
     const changed: string[] = [];
     if (patch.mutationRate !== undefined && patch.mutationRate !== this.spec.rules.mutationRate) {
       this.spec.rules.mutationRate = patch.mutationRate;
@@ -325,7 +332,7 @@ export class Simulation {
       this.pendingEvents.push({
         t: this.tick,
         kind: 'rule',
-        msg: `实验者修改了规则：${changed.join('，')}`,
+        msg: `实验者${via ?? ''}修改了规则：${changed.join('，')}`,
       });
     }
   }

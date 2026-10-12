@@ -13,6 +13,8 @@ import type { LlmSettings } from '../llm/types';
 import type { ExperimentRecord } from '../store/types';
 import { useExperiments } from '../store/experiments';
 import { loadLlmSettings } from './SettingsModal';
+import { StewardPanel } from './StewardPanel';
+import type { RulesPatch } from './panels';
 
 // ---------------------------------------------------------------------------
 // 世界之声：画布底部解说字幕条 + AI 说书人 / 军师。
@@ -131,7 +133,17 @@ function makeAmbientCaption(expId: string, templateIndex: number): string {
 // 主组件
 // ---------------------------------------------------------------------------
 
-export function NarratorBar({ expId }: { expId: string }) {
+export function NarratorBar({
+  expId,
+  rules,
+  onApplyRules,
+}: {
+  expId: string;
+  /** 当前规则值（观察舱 rules state），供世界管家读取现状 */
+  rules: RulesPatch | null;
+  /** 应用规则调整（观察舱统一入口：updateRules + 同步面板 + 跳事件流） */
+  onApplyRules: (patch: RulesPatch, via?: string) => void;
+}) {
   // 仅订阅 running（低频变化）：用于「欢迎页阶段不显示」的门控
   const running = useExperiments((s) => s.records[expId]?.running ?? false);
   // 订阅事件数组（仅新事件到达时身份变化）：驱动「最新事件即字幕」
@@ -147,6 +159,10 @@ export function NarratorBar({ expId }: { expId: string }) {
   const [advisorLoading, setAdvisorLoading] = useState(false);
   const [advisorAnswer, setAdvisorAnswer] = useState<string | null>(null);
   const [advisorError, setAdvisorError] = useState<string | null>(null);
+  // 长解说句展开：默认 clamp 到 2 行，点击字幕展开全文
+  const [captionExpanded, setCaptionExpanded] = useState(false);
+  // 世界管家面板（与军师面板互斥，避免叠两层弹窗）
+  const [stewardOpen, setStewardOpen] = useState(false);
 
   // 卸载 / 切换实验标记：异步回调落地前检查，避免旧实验的回答串台
   const disposedRef = useRef(false);
@@ -156,6 +172,7 @@ export function NarratorBar({ expId }: { expId: string }) {
   const lastEventSigRef = useRef<string | null>(null);
   const lastAiAtRef = useRef(0);
   const templateIdxRef = useRef(0);
+  const captionExpandedRef = useRef(false);
 
   const markAiUnavailable = useCallback((): void => {
     if (aiUnavailableRef.current) return;
@@ -208,10 +225,18 @@ export function NarratorBar({ expId }: { expId: string }) {
     setAdvisorLoading(false);
     setAdvisorAnswer(null);
     setAdvisorError(null);
+    setStewardOpen(false);
     return () => {
       disposedRef.current = true;
     };
   }, [expId]);
+
+  // 字幕内容变化（事件插播 / AI 解说 / 氛围轮换）时收起展开态，
+  // 避免展开的是旧句而显示的是新句造成误解
+  useEffect(() => {
+    captionExpandedRef.current = false;
+    setCaptionExpanded(false);
+  }, [caption.text]);
 
   // 最新事件即字幕：事件流身份变化 = 有新事件（首次只记基线，不抢占字幕）
   useEffect(() => {
@@ -228,10 +253,11 @@ export function NarratorBar({ expId }: { expId: string }) {
     setCaption({ text: lastEv.msg, source: 'event' });
   }, [events]);
 
-  // 氛围句轮换：事件/AI 字幕新鲜期内不打扰
+  // 氛围句轮换：事件/AI 字幕新鲜期内不打扰；用户展开阅读时不抢走字幕
   useEffect(() => {
     const t = setInterval(() => {
       if (disposedRef.current) return;
+      if (captionExpandedRef.current) return;
       if (Date.now() - lastCaptionAtRef.current < ROTATE_MS) return;
       templateIdxRef.current += 1;
       const text = makeAmbientCaption(expId, templateIdxRef.current);
@@ -258,12 +284,13 @@ export function NarratorBar({ expId }: { expId: string }) {
     return () => clearInterval(t);
   }, [expId, runAiNarration]);
 
-  // 军师面板：未配置时打开即提示，不发起任何请求
+  // 军师面板：未配置时打开即提示，不发起任何请求；打开时收起管家面板
   const handleAdvisorToggle = useCallback((): void => {
     if (advisorOpen) {
       setAdvisorOpen(false);
       return;
     }
+    setStewardOpen(false);
     setAdvisorOpen(true);
     setAdvisorError(null);
     const gen = genRef.current;
@@ -307,11 +334,25 @@ export function NarratorBar({ expId }: { expId: string }) {
     }
   }, [advisorLoading, advisorQuestion, expId]);
 
+  // 世界管家面板开关（与军师面板互斥）
+  const handleStewardToggle = useCallback((): void => {
+    setAdvisorOpen(false);
+    setStewardOpen((v) => !v);
+  }, []);
+
   // 世界尚未开跑（欢迎页覆盖中）时不显示字幕条
   if (!running && (useExperiments.getState().records[expId]?.lastTick ?? 0) === 0) return null;
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-14 z-10 flex flex-col items-center gap-2 px-4">
+      {stewardOpen && rules !== null && (
+        <StewardPanel
+          expId={expId}
+          current={rules}
+          onApply={(patch) => onApplyRules(patch, '按 AI 建议')}
+          onClose={() => setStewardOpen(false)}
+        />
+      )}
       {advisorOpen && (
         <div className="pointer-events-auto w-full max-w-xl rounded-xl border border-lab-border bg-[#0d121b]/95 p-3 shadow-xl backdrop-blur">
           <div className="mb-2 flex items-center">
@@ -355,16 +396,26 @@ export function NarratorBar({ expId }: { expId: string }) {
           </div>
         </div>
       )}
-      {/* 半透明胶囊字幕条 */}
-      <div className="pointer-events-auto flex max-w-full items-center gap-2 rounded-full border border-lab-border bg-black/60 py-1.5 pl-4 pr-1.5 shadow-lg backdrop-blur">
+      {/* 半透明胶囊字幕条：长句默认 2 行省略，点击展开全文 */}
+      <div
+        className={`pointer-events-auto flex max-w-full items-center gap-2 border border-lab-border bg-black/60 py-1.5 pl-4 pr-1.5 shadow-lg backdrop-blur ${
+          captionExpanded ? 'rounded-2xl' : 'rounded-full'
+        }`}
+      >
         {caption.source === 'ai' && (
           <span className="shrink-0 rounded bg-lab-accent/15 px-1.5 py-0.5 text-[10px] leading-none text-lab-accent">
             AI
           </span>
         )}
         <p
-          className="min-w-0 max-w-[520px] truncate text-xs leading-5 text-lab-text/90"
-          title={caption.text}
+          onClick={() => {
+            captionExpandedRef.current = !captionExpanded;
+            setCaptionExpanded(captionExpandedRef.current);
+          }}
+          className={`min-w-0 max-w-[520px] cursor-pointer text-xs leading-5 text-lab-text/90 ${
+            captionExpanded ? '' : 'line-clamp-2'
+          }`}
+          title={captionExpanded ? '点击收起' : caption.text}
         >
           {caption.text}
         </p>
@@ -377,8 +428,21 @@ export function NarratorBar({ expId }: { expId: string }) {
           </span>
         )}
         <button
+          onClick={handleStewardToggle}
+          className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] leading-4 transition-colors ${
+            stewardOpen
+              ? 'border-lab-accent bg-lab-accent/20 text-lab-accent'
+              : 'border-lab-border bg-lab-border/40 text-lab-muted hover:border-lab-accent/60 hover:text-lab-accent'
+          }`}
+          title="AI 世界管家：说出想法，生成规则调整方案"
+        >
+          ⚙ 管家
+        </button>
+        <button
           onClick={handleAdvisorToggle}
-          className="shrink-0 rounded-full border border-lab-accent/40 bg-lab-accent/10 px-2.5 py-0.5 text-[11px] leading-4 text-lab-accent transition-colors hover:bg-lab-accent/20"
+          className={`shrink-0 rounded-full border border-lab-accent/40 px-2.5 py-0.5 text-[11px] leading-4 transition-colors ${
+            advisorOpen ? 'bg-lab-accent/20 text-lab-accent' : 'bg-lab-accent/10 text-lab-accent hover:bg-lab-accent/20'
+          }`}
           title="向 AI 军师提问（也可在设置中开启自动解说）"
         >
           ✦ 问军师

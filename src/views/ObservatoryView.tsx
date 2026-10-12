@@ -339,8 +339,9 @@ export function ObservatoryView() {
   );
 
   const handleApplyRules = useCallback(
-    (patch: RulesPatch) => {
-      simManager.get(id)?.updateRules(patch);
+    (patch: RulesPatch, via?: string) => {
+      // via 为干预来源前缀（如 '按 AI 建议'），仅影响事件流文案
+      simManager.get(id)?.updateRules(patch, via);
       setRules(patch);
       setTab('events');
     },
@@ -573,7 +574,7 @@ export function ObservatoryView() {
             拖拽平移 · 滚轮缩放 · 点击个体查看 · 悬停查看物种
           </div>
           {/* 世界之声：画布底部解说字幕条（位于图例与提示之上） */}
-          <NarratorBar expId={id} />
+          <NarratorBar expId={id} rules={rules} onApplyRules={handleApplyRules} />
           {/* 热力叠加切换：看哪里扎堆（密度）/ 哪里在死人（死亡） */}
           <div className="pointer-events-auto absolute bottom-3 right-3 z-10 flex gap-1 rounded-full bg-black/50 p-0.5">
             {OVERLAY_MODES.map((m) => (
