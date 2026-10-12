@@ -54,7 +54,7 @@ npm run preview    # 本地预览构建产物
 
 ### AI 设置
 
-设置弹窗中配置 **OpenAI 兼容接口** 三项：`baseURL`（如 `https://open.bigmodel.cn/api/paas/v4`）、`apiKey`、`model`（默认 `glm-4-flash-250414`）。内置厂商预设一键填充（glm-4-flash-250414 / glm-5.3-flash / DeepSeek），附智谱开放平台免费注册入口；「⚡ 测试连接」用约 1 个 token 的最小请求验证配置。密钥仅存本地 IndexedDB。**不配置也能用**：自然语言创建会自动退回到内置规则解析，「世界之声」字幕条走本地模板解说。
+设置弹窗中配置 **OpenAI 兼容接口** 三项：`baseURL`（如 `https://open.bigmodel.cn/api/paas/v4`）、`apiKey`、`model`（默认 `glm-4.7-flash`）。内置厂商预设一键填充（glm-4.7-flash / glm-5.3-flash / DeepSeek），附智谱开放平台免费注册入口；「⚡ 测试连接」用约 1 个 token 的最小请求验证配置。密钥仅存本地 IndexedDB。**不配置也能用**：自然语言创建会自动退回到内置规则解析，「世界之声」字幕条走本地模板解说。
 
 ## 🧬 模拟模型
 

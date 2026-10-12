@@ -12,15 +12,15 @@ import {
 const DEFAULTS: LlmSettings = {
   baseURL: 'https://open.bigmodel.cn/api/paas/v4',
   apiKey: '',
-  model: 'glm-4-flash-250414',
+  model: 'glm-4.7-flash',
 };
 
 /** 厂商预设：一键填充 baseURL + 模型（Key 保留不动） */
 const PROVIDER_PRESETS: Array<{ label: string; baseURL: string; model: string }> = [
   {
-    label: 'glm-4-flash-250414（免费）',
+    label: 'glm-4.7-flash（免费）',
     baseURL: 'https://open.bigmodel.cn/api/paas/v4',
-    model: 'glm-4-flash-250414',
+    model: 'glm-4.7-flash',
   },
   {
     label: 'glm-5.3-flash',
@@ -120,7 +120,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           >
             免费注册智谱开放平台 ↗
           </a>
-          （glm-4-flash-250414 免费）。
+          （glm-4.7-flash 免费）。
         </p>
         <div className="mb-3 flex flex-wrap gap-1.5">
           {PROVIDER_PRESETS.map((p) => (
@@ -195,7 +195,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           <h3 className="mb-1 text-sm font-medium">AI 观察员</h3>
           <p className="mb-3 text-xs leading-5 text-lab-muted">
             「世界之声」会在观察舱画布底部持续解说世界。每次调用约 1k
-            token，建议使用免费或廉价模型（如 glm-4-flash）。数据为世界摘要，不含任何个人数据。
+            token，建议使用免费或廉价模型（如 glm-4.7-flash）。数据为世界摘要，不含任何个人数据。
           </p>
           <span className="mb-1 block text-xs text-lab-muted">AI 说书人（实验性）</span>
           <div className="flex gap-1">
