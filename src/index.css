@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+@theme {
+  --color-lab-bg: #0a0e14;
+  --color-lab-panel: #11161f;
+  --color-lab-panel2: #0d121b;
+  --color-lab-border: #1e2633;
+  --color-lab-accent: #34d399;
+  --color-lab-accent-dim: #10b981;
+  --color-lab-text: #d7dee8;
+  --color-lab-muted: #7d8899;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(1100px 700px at 85% -10%, rgba(52, 211, 153, 0.055), transparent 60%),
+    radial-gradient(900px 600px at -5% 110%, rgba(56, 189, 248, 0.05), transparent 55%),
+    radial-gradient(1400px 900px at 50% 50%, rgba(30, 41, 59, 0.35), transparent 70%),
+    var(--color-lab-bg);
+  color: var(--color-lab-text);
+  font-family:
+    "PingFang SC",
+    "Microsoft YaHei",
+    "Noto Sans SC",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 按钮微交互：所有按钮统一过渡 + 轻微按压反馈 */
+button {
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.08s ease;
+}
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* 可输入控件的聚焦光环 */
+input,
+textarea,
+select {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--color-lab-accent) !important;
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.12);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a3442;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #37455a;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+input[type="range"] {
+  accent-color: var(--color-lab-accent);
+  cursor: pointer;
+}
+
+input[type="color"] {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 6px;
+}

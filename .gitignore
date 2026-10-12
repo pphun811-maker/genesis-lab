@@ -1,0 +1,14 @@
+# 依赖与构建产物
+node_modules/
+dist/
+
+# 构建缓存
+tsconfig.tsbuildinfo
+
+# 本地工具/会话目录
+.zcode/
+.zcodeignore
+
+# 日志与临时文件
+*.log
+.DS_Store
