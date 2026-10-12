@@ -64,7 +64,7 @@ npx tsx bench/perf.bench.ts   # ✅ 本轮 0.851ms/tick @923 个体（P95 1.03ms
 - **导出**：⤓ 导出触发浏览器下载 ✓（导入按钮 ⚠️ 见下）
 - **持久化**：刷新页面从快照恢复（恢复后强制暂停）✓
 - **字幕条 + 军师**：模板解说（事件即时插播 + 8s 轮换氛围句，引用真实物种名）✓；未配置 AI 时问军师提示「先在设置里配置 AI」✓
-- **设置弹窗**：面板内拖动全选文本、松手落在蒙层不再误关弹窗（需按下+松开都在蒙层才关闭，实测拖出蒙层后弹窗保留、蒙层直点仍正常关闭）✓；「⚡ 测试连接」按钮用当前草稿发 max_tokens=1 的最小请求并显示 延迟/模型 或错误——成功与失败两条 UI 路径均已用 fetch 拦截实测（无真实网络）✓
+- **设置弹窗**：面板内拖动全选文本、松手落在蒙层不再误关弹窗（需按下+松开都在蒙层才关闭，实测拖出蒙层后弹窗保留、蒙层直点仍正常关闭）✓；「⚡ 测试连接」按钮用当前草稿发 max_tokens=1 的最小请求并显示 延迟/模型 或错误——成功与失败两条 UI 路径均已用 fetch 拦截实测（无真实网络）✓；厂商预设芯片一键填充（glm-4-flash-250414（免费）/ glm-5.3-flash → 智谱 v4；DeepSeek → api.deepseek.com + deepseek-flash，实测点击填充正确）✓；说明文案含智谱开放平台免费注册入口（open.bigmodel.cn，新标签）✓；默认模型 `glm-4-flash-250414`。注意：DeepSeek 预设模型名为用户指定，官方模型 ID 若不同（如 deepseek-chat）用户测试连接时需自行改模型框。
 - **侧栏拖宽**：把手跟随鼠标（右拖变窄），300–720px，localStorage `gl-sidebar-width-v1` ✓
 - **死因账本语义**：咬杀计入 `deaths` 且 `deathsByCause.predation`，五类之和恒等于 deaths（测试守护）✓
 
@@ -110,7 +110,7 @@ src/
 ├─ components/        # Chart / MetricCharts(折叠状态持久化) / WorldPulse(七节世界报告) /
 │                     # panels(物种卡+传记下钻+检查器+事件流+规则面板) / NarratorBar(字幕条+军师) /
 │                     # PhyloTree(谱系时间轴树) / PlaybackBar / GenomeBars /
-│                     # SettingsModal(含 AI 观察员节+测试连接) / GuideOverlay
+│                     # SettingsModal(厂商预设芯片+免费注册入口+AI 观察员节+测试连接) / GuideOverlay
 └─ views/             # Home(家族树) / Create / Observatory(画布交互+tooltip+高亮+侧栏拖宽+叠加切换) / Compare
 tests/                # 55 个:engine(确定性/能量/生态/物种/命名/死因/有性) · llm · persistence
 bench/perf.bench.ts   # 性能基准（tsx 运行）
@@ -127,7 +127,7 @@ bench/perf.bench.ts   # 性能基准（tsx 运行）
 
 ## 七、环境快照（交接时刻）
 
-- **GitHub**：https://github.com/pphun811-maker/genesis-lab （private，main 分支；改动后 `git push` 即可同步）
+- **GitHub**：https://github.com/pphun811-maker/genesis-lab （**public 开源**，main 分支，最新 `0a42659`；改动后 `git add -A && git commit && git push` 即可同步）。`.gitignore` 排除 node_modules/dist/tsconfig.tsbuildinfo/.zcode。
 - dev server 在 **5175**（后台任务,会话结束即停）；4173 preview 已停。接手自己 `npm run dev`。
 - 5175 origin IndexedDB 有多个实验（含用户亲手创建的「突变沸腾」~2.9k 个体 29 物种,以及本轮测试的猎食军备竞赛及分叉）；4173 有一个 preview 测试用的和平花园。
 - `tsconfig.tsbuildinfo` 是 build 缓存产物,已进 .gitignore,别删。
