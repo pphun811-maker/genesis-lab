@@ -54,7 +54,7 @@ npm run preview    # 本地预览构建产物
 
 ### AI 设置
 
-设置弹窗中配置 **OpenAI 兼容接口** 三项：`baseURL`（如 `https://open.bigmodel.cn/api/paas/v4`）、`apiKey`、`model`（如 `glm-4-flash`）。GLM、DeepSeek、OpenAI 等任何兼容服务均可；密钥仅存本地 IndexedDB。**不配置也能用**：自然语言创建会自动退回到内置规则解析。
+设置弹窗中配置 **OpenAI 兼容接口** 三项：`baseURL`（如 `https://open.bigmodel.cn/api/paas/v4`）、`apiKey`、`model`（默认 `glm-4-flash-250414`）。内置厂商预设一键填充（glm-4-flash-250414 / glm-5.3-flash / DeepSeek），附智谱开放平台免费注册入口；「⚡ 测试连接」用约 1 个 token 的最小请求验证配置。密钥仅存本地 IndexedDB。**不配置也能用**：自然语言创建会自动退回到内置规则解析，「世界之声」字幕条走本地模板解说。
 
 ## 🧬 模拟模型
 
@@ -150,7 +150,7 @@ genesis-lab/
 │  ├─ render/        # renderer.ts Canvas 渲染 · camera.ts 平移/缩放/跟随相机
 │  ├─ views/         # HomeView（实验家族树）/ CreateView / ObservatoryView / CompareView
 │  ├─ components/    # PlaybackBar · MetricCharts · WorldPulse(世界快报) · GenomeBars · panels · SettingsModal · Chart
-│  ├─ llm/           # provider（OpenAI 兼容 HTTP）· worldgen（LLM 创世）· rulesFallback（离线规则解析）
+│  ├─ llm/           # provider（OpenAI 兼容 HTTP+测试连接）· worldgen（LLM 创世）· rulesFallback · observer（AI 观察员）
 │  ├─ store/         # zustand 实验状态与持久化桥接
 │  └─ persistence/   # db.ts（IndexedDB）· serialize.ts（实验 JSON 导入导出）
 └─ tests/            # vitest：engine（确定性/能量/生态/物种）· llm · persistence
@@ -166,8 +166,13 @@ genesis-lab/
 - [x] 分叉实验与并行运行（Worker 池）
 - [x] 对比视图
 - [x] 实验导入/导出（JSON 序列化）
-- [x] 世界叙事层：物种自动命名 · 特征标签 · 生态位 · 世界快报 · 里程碑事件 · 画布悬停/图例/物种高亮
-- [ ] 有性繁殖与系统发生树
-- [ ] 神经网络大脑（超越固定优先级的行为决策）
-- [ ] 灾害事件系统
+- [x] 世界叙事层：物种自动命名 · 特征标签 · 生态位 · 世界报告 · 里程碑事件 · 画布悬停/图例/物种高亮
+- [x] 因果透视：死因账本 · 食物网 · 物种传记下钻 · 热力叠加（种群密度/死亡热点）
+- [x] 有性繁殖（求偶+基因交叉）与系统发生树（谱系时间轴）
+- [x] 生态压力三件套：拥挤应激 · 衰老代谢 · 灾变系统（旱灾/瘟疫）
+- [x] AI 观察员：说书人字幕条 · 军师问答 · 测试连接
+- [x] 性能：引擎 2.4–4.4× 提速 · 精灵图集渲染 · 高速档事件零丢失
+- [ ] 导演模式（镜头自动切到事件现场）
+- [ ] 守护与神迹（有限干预工具 + 神迹簿）
+- [ ] 神经网络大脑（超越固定优先级的行为决策，做成可选大脑）
 - [ ] 分享实验链接
