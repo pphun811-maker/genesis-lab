@@ -19,6 +19,9 @@ const HEAT_REPAINT_INTERVAL = 150;
 const DENSITY_CAP = 20;
 /** 密度场每轮衰减系数：旧聚集逐渐冷却，持续驻留处补 1 形成发光 */
 const DENSITY_DECAY = 0.92;
+/** 单帧绘制的可见个体上限：全景高密度时均匀抽样（密度观感不变，纯渲染决策）。
+ * 万级种群下逐个体 fillRect/drawImage 是主线程掉帧的直接来源。 */
+const MAX_DRAW_AGENTS = 8000;
 
 /** 画布热力叠加模式：off = 关闭；population = 种群密度聚集；deaths = 死亡热点 */
 export type OverlayMode = 'off' | 'population' | 'deaths';
@@ -66,6 +69,8 @@ export class WorldRenderer {
   private fertility: Float32Array = new Float32Array(0);
   private maxPerCell = 1;
   private vignette: { gradient: CanvasGradient; w: number; h: number } | null = null;
+  /** 可见个体下标的复用缓冲（每帧重建内容，容量保持水位） */
+  private visibleBuf: number[] = [];
   worldW = 0;
   worldH = 0;
 
@@ -441,6 +446,33 @@ export class WorldRenderer {
   }
 
   /**
+   * 收集视口内可见个体的下标到复用缓冲，并给出抽样步长：
+   * 可见数超过 MAX_DRAW_AGENTS 时均匀抽样（全景密度观感不变），
+   * 高倍缩放下可见数少则 stride=1 全画。
+   */
+  private collectVisible(
+    frame: FrameData,
+    vx0: number,
+    vx1: number,
+    vy0: number,
+    vy1: number,
+  ): { visible: number[]; stride: number } {
+    const vis = this.visibleBuf;
+    vis.length = 0;
+    const agents = frame.agents;
+    const n = agents.length / AGENT_STRIDE;
+    for (let i = 0; i < n; i++) {
+      const o = i * AGENT_STRIDE;
+      const x = agents[o + 1];
+      const y = agents[o + 2];
+      if (x < vx0 || x > vx1 || y < vy0 || y > vy1) continue;
+      vis.push(i);
+    }
+    const stride = vis.length > MAX_DRAW_AGENTS ? Math.ceil(vis.length / MAX_DRAW_AGENTS) : 1;
+    return { visible: vis, stride };
+  }
+
+  /**
    * 高倍缩放：逐个体 drawImage 精灵。
    * sprite 圆心对准个体坐标、直径 = 2r（r = max(0.32, size*0.42)），视觉大小与
    * 旧的 arc + fill 完全一致；能量透明度 / 高亮压暗逻辑不变。
@@ -455,13 +487,12 @@ export class WorldRenderer {
     highlightIdx: Set<number> | null,
   ): void {
     const atlas = this.ensureAtlas();
+    const { visible, stride } = this.collectVisible(frame, vx0, vx1, vy0, vy1);
     const agents = frame.agents;
-    const n = agents.length / AGENT_STRIDE;
-    for (let i = 0; i < n; i++) {
-      const o = i * AGENT_STRIDE;
+    for (let k = 0; k < visible.length; k += stride) {
+      const o = visible[k] * AGENT_STRIDE;
       const x = agents[o + 1];
       const y = agents[o + 2];
-      if (x < vx0 || x > vx1 || y < vy0 || y > vy1) continue;
       const size = agents[o + 4];
       const r = Math.max(0.32, size * 0.42);
       // 能量低个体逐渐隐入背景：饥荒一望便知
@@ -487,6 +518,7 @@ export class WorldRenderer {
    * 低倍缩放：可见个体按 hue|0 分组，同色连续 fillRect 不切换 fillStyle，
    * 省掉 2000+ 次 beginPath/arc/fill。方块边长 ≈ 现在圆的直径
    * （size=1 → 0.84 格，下限 0.8 格），大体型按比例放大。
+   * 可见数超上限时按 stride 均匀抽样。
    */
   private drawAgentsBatched(
     ctx: CanvasRenderingContext2D,
@@ -499,14 +531,11 @@ export class WorldRenderer {
   ): void {
     const buckets = this.ensureBuckets();
     for (let h = 0; h < HUE_COUNT; h++) buckets[h].length = 0;
+    const { visible, stride } = this.collectVisible(frame, vx0, vx1, vy0, vy1);
     const agents = frame.agents;
-    const n = agents.length / AGENT_STRIDE;
-    for (let i = 0; i < n; i++) {
-      const o = i * AGENT_STRIDE;
-      const x = agents[o + 1];
-      const y = agents[o + 2];
-      if (x < vx0 || x > vx1 || y < vy0 || y > vy1) continue;
-      buckets[hueIndex(agents[o + 3])].push(i);
+    for (let k = 0; k < visible.length; k += stride) {
+      const i = visible[k];
+      buckets[hueIndex(agents[i * AGENT_STRIDE + 3])].push(i);
     }
     for (let h = 0; h < HUE_COUNT; h++) {
       const bucket = buckets[h];

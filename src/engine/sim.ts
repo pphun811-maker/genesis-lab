@@ -354,7 +354,9 @@ export class Simulation {
     const maxPop = this.spec.rules.maxPopulation;
     const newborns: Agent[] = [];
 
-    // 指标累加器
+    // 指标累加器与物种计数：只在会消费它们的 tick（指标采样 10 / 灭绝检查 30 的公倍数节奏）
+    // 才维护——每 tick 每个体 8 次 genome 属性读 + 一次 Map 写在万级种群下是实测热点，
+    // 而累加值纯粹是只读统计，惰性化不改变任何模拟状态与轨迹。
     let sSpeed = 0;
     let sSense = 0;
     let sSize = 0;
@@ -364,6 +366,7 @@ export class Simulation {
     let sSoc = 0;
     let sRepro = 0;
     const speciesPop = new Map<number, number>();
+    const statsTick = t % METRICS_EVERY === 0 || t % SPECIES_PRUNE_EVERY === 0;
 
     for (let i = 0; i < this.agents.length; ) {
       const a = this.agents[i];
@@ -451,17 +454,19 @@ export class Simulation {
         }
       }
 
-      // ---- 统计 ----
-      const g = a.genome;
-      sSpeed += g.speed;
-      sSense += g.sense;
-      sSize += g.size;
-      sMetab += g.metabolism;
-      sAggr += g.aggression;
-      sFear += g.fear;
-      sSoc += g.sociability;
-      sRepro += g.reproThreshold;
-      speciesPop.set(a.speciesId, (speciesPop.get(a.speciesId) ?? 0) + 1);
+      // ---- 统计（惰性：只在会消费结果的 tick 维护，见循环前的说明）----
+      if (statsTick) {
+        const g = a.genome;
+        sSpeed += g.speed;
+        sSense += g.sense;
+        sSize += g.size;
+        sMetab += g.metabolism;
+        sAggr += g.aggression;
+        sFear += g.fear;
+        sSoc += g.sociability;
+        sRepro += g.reproThreshold;
+        speciesPop.set(a.speciesId, (speciesPop.get(a.speciesId) ?? 0) + 1);
+      }
 
       i++;
     }
@@ -878,6 +883,7 @@ export class Simulation {
     let best: Agent | null = null;
     let bestD2 = Infinity;
     const r = self.genome.sense;
+    // d2 >= bestD2 的平局取先者语义依赖 forEachNear 的遍历顺序，勿改循环结构
     this.hash.forEachNear(self.x, self.y, r, (other) => {
       if (other === self || !other.alive || other.speciesId !== self.speciesId) return;
       if (other.age <= MATURITY_TICKS) return;

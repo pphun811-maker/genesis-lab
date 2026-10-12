@@ -58,6 +58,8 @@ export function steer(self: Agent, ctx: BehaviorContext): SteerResult {
   const wantKin = g.sociability > 0.05;
 
   // ---- 单遍感知：威胁 / 猎物 / 同类质心 ----
+  // forEachNear 的回调会被 V8 内联；实测改数组/SoA 形态均无收益（候选以同类居多，
+  // 短路访问比全量解包便宜），维持闭包形态。热路径零分配（结果写入复用对象）。
   let threatDX = 0;
   let threatDY = 0;
   let threatD2 = Infinity;
