@@ -8,8 +8,9 @@ import type { LlmSettings } from './types';
  * - 从返回文本中提取 JSON 字符串（剥掉 ```json 围栏，取第一个 { 到最后一个 }）。
  */
 
-/** 请求超时（毫秒） */
-const TIMEOUT_MS = 15_000;
+/** 请求超时（毫秒）。AI 创世要生成完整 WorldSpec JSON（实测 glm-4-flash 本机直连 ~8s，
+ * 浏览器走代理或服务端高峰时更长），15s 曾把长生成请求掐死而短解说不受影响——放宽到 30s。 */
+const TIMEOUT_MS = 30_000;
 
 /** 携带 HTTP 状态码的错误，便于上层区分「服务端拒绝」与「模型输出不合法」 */
 export class LlmHttpError extends Error {
