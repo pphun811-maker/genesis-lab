@@ -1,5 +1,6 @@
 import { Rng } from './rng';
 import {
+  BIOME_AMPHIBIAN,
   BIOME_FRESHWATER,
   BIOME_LAND,
   BIOME_OCEAN,
@@ -180,7 +181,8 @@ export class World {
 
   /**
    * 栖息域通行判定（硬隔离的核心）：陆域生物可走普通格与危险区，
-   * 淡水生物只能待在淡水格，海洋生物只能待在海洋格；障碍格对所有生物都是墙。
+   * 淡水生物只能待在淡水格，海洋生物只能待在海洋格；
+   * 两栖生物可走陆地与淡水（不能下海）；障碍格对所有生物都是墙。
    */
   passableFor(habitat: number, x: number, y: number): boolean {
     if (x < 0 || y < 0 || x >= this.width || y >= this.height) return false;
@@ -189,6 +191,9 @@ export class World {
     if (habitat === BIOME_LAND) return t === TERRAIN_NORMAL || t === TERRAIN_HAZARD;
     if (habitat === BIOME_FRESHWATER) return t === TERRAIN_FRESH;
     if (habitat === BIOME_OCEAN) return t === TERRAIN_OCEAN;
+    if (habitat === BIOME_AMPHIBIAN) {
+      return t === TERRAIN_NORMAL || t === TERRAIN_HAZARD || t === TERRAIN_FRESH;
+    }
     return false;
   }
 

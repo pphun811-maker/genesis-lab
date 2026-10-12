@@ -37,7 +37,7 @@ export const speciesSchema = z.object({
   count: z.number().min(1).max(600).optional(),
   genome: genomeSchema.optional(),
   variance: z.record(z.string(), z.number()).optional(),
-  habitat: z.number().int().min(0).max(2).optional(),
+  habitat: z.number().int().min(0).max(3).optional(),
 });
 
 /** 完整世界定义（全部字段可选；species 若给出则需 1..6 个） */
@@ -157,7 +157,7 @@ export function describeSpecForPrompt(): string {
   '      "name": "物种名",                 // 字符串，≤12 字，建议用有画面感的中文短名',
   '      "color": "#34d399",               // 物种代表色，格式 #rrggbb',
   '      "count": 100,                     // 数值，1..600，初始个体数量',
-  '      "habitat": 0,                     // 可选：栖息域 0=陆地 1=淡水 2=海洋（硬隔离，不同域互不可入；省略=陆地）',
+  '      "habitat": 0,                     // 可选：栖息域 0=陆地 1=淡水 2=海洋 3=两栖（可待陆+淡不能下海，全域代谢+45%、水中弱势；省略=陆地）',
     '      "genome": {                       // 初始基因模板，以下字段全部可省略',
     genomeLines,
     '      },',

@@ -232,16 +232,29 @@ export const TERRAIN_OCEAN = 4;
 // 生态圈（栖息域）
 // ---------------------------------------------------------------------------
 
-/** 栖息域：陆地 / 淡水 / 海洋（物种属性 + 个体所在格共同决定通行与命名） */
+/** 栖息域：陆地 / 淡水 / 海洋 / 两栖（物种属性 + 个体所在格共同决定通行与命名） */
 export const BIOME_LAND = 0;
 export const BIOME_FRESHWATER = 1;
 export const BIOME_OCEAN = 2;
+/** 两栖：可待陆地+淡水（不能下海），付全域代谢税（AMPHIBIAN_METAB），水中弱势 */
+export const BIOME_AMPHIBIAN = 3;
 
 export const BIOME_LABELS: Record<number, string> = {
   [BIOME_LAND]: '陆地',
   [BIOME_FRESHWATER]: '淡水',
   [BIOME_OCEAN]: '海洋',
+  [BIOME_AMPHIBIAN]: '两栖',
 };
+
+/** 两栖的苛刻条件（2026-10-13 用户拍板：可以两栖捕食但条件苛刻，不能黑白通吃） */
+/** 全域代谢税乘数（+45%，无论身在何域都交） */
+export const AMPHIBIAN_METAB = 0.45;
+/** 水中移动减速乘数（追不上专业水生猎手） */
+export const AMPHIBIAN_SWIM = 0.75;
+/** 水中进食效率乘数（抢食抢不过原住民） */
+export const AMPHIBIAN_FEED = 0.6;
+/** 涉食效率乘数：本格吃空时隔岸取食（熊捞鱼/鱼啃草），饥荒行为 */
+export const SHORE_FEED = 0.5;
 
 /** 地形值 → 栖息域（障碍/危险/普通格都算陆域；水域格各归其主） */
 export function habitatOfTerrain(t: number): number {
@@ -250,8 +263,8 @@ export function habitatOfTerrain(t: number): number {
   return BIOME_LAND;
 }
 
-/** 各栖息域身上「能觅食的地形值」（陆地=普通格；水域=本域水面） */
-export const HOME_TERRAIN = [TERRAIN_NORMAL, TERRAIN_FRESH, TERRAIN_OCEAN] as const;
+/** 各栖息域身上「能觅食的地形值」（陆地=普通格；水域=本域水面；两栖主食陆格，水格由 altHome 特判） */
+export const HOME_TERRAIN = [TERRAIN_NORMAL, TERRAIN_FRESH, TERRAIN_OCEAN, TERRAIN_NORMAL] as const;
 
 /** 地形值是否产食物（普通格 + 两类水面；障碍/危险区不产） */
 export function terrainRegrows(t: number): boolean {

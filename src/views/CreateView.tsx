@@ -39,11 +39,12 @@ const GENE_SLIDERS: Array<{ key: keyof Genome; label: string }> = [
   { key: 'reproThreshold', label: '繁殖阈值' },
 ];
 
-/** 物种栖息域选项（BIOME_*；硬隔离：不同域互不可入，分化时继承） */
+/** 物种栖息域选项（BIOME_*；硬隔离：不同域互不可入，分化时继承；两栖付全域代谢税） */
 const SPECIES_HABITATS: Array<{ value: number; label: string; hint: string }> = [
   { value: 0, label: '陆地', hint: '只能待在陆地上，水域是不可逾越的墙' },
   { value: 1, label: '淡水', hint: '只能待在湖泊与湿地里（千湖大陆/群岛海域等水圈世界）' },
   { value: 2, label: '海洋', hint: '只能待在海洋里（群岛海域等水圈世界）' },
+  { value: 3, label: '两栖', hint: '可待陆地+淡水（不能下海）；全域代谢+45%、水中移动×0.75、水中进食×0.6——高税特化种' },
 ];
 
 export function CreateView() {

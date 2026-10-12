@@ -3,6 +3,7 @@ import { describeGenome } from '../../src/engine/naming';
 import { Simulation } from '../../src/engine/sim';
 import { SpeciesTable } from '../../src/engine/species';
 import {
+  BIOME_AMPHIBIAN,
   BIOME_FRESHWATER,
   BIOME_LAND,
   BIOME_OCEAN,
@@ -12,6 +13,7 @@ import {
   TERRAIN_OBSTACLE,
   TERRAIN_OCEAN,
   habitatOfTerrain,
+  type Agent,
   type Genome,
   type SpeciesTemplate,
   type WorldSpec,
@@ -28,7 +30,7 @@ function waterSpec(seed = 7): WorldSpec {
   };
 }
 
-/** 三圈世界：湖鱼/海鱼/陆兽各一支，验证投放落域与硬隔离 */
+/** 三圈世界：湖鱼/海鱼/陆兽/两栖各一支，验证投放落域与硬隔离 */
 function triSpec(seed = 11): WorldSpec {
   return {
     name: '三圈试验场',
@@ -43,6 +45,7 @@ function triSpec(seed = 11): WorldSpec {
       { name: '湖鱼', color: '#38bdf8', count: 40, habitat: BIOME_FRESHWATER, genome: {} },
       { name: '海鱼', color: '#22d3ee', count: 40, habitat: BIOME_OCEAN, genome: {} },
       { name: '陆兽', color: '#a3e635', count: 40, habitat: BIOME_LAND, genome: {} },
+      { name: '泽螈', color: '#16a34a', count: 30, habitat: BIOME_AMPHIBIAN, genome: {} },
     ] as SpeciesTemplate[],
   };
 }
@@ -118,15 +121,20 @@ describe('生态圈地形生成', () => {
     // 海洋生物：只待海洋
     expect(world.passableFor(BIOME_OCEAN, ...at(oceanCell))).toBe(true);
     expect(world.passableFor(BIOME_OCEAN, ...at(landCell))).toBe(false);
+    // 两栖生物：陆与淡皆可，唯独下不了海
+    expect(world.passableFor(BIOME_AMPHIBIAN, ...at(landCell))).toBe(true);
+    expect(world.passableFor(BIOME_AMPHIBIAN, ...at(freshCell))).toBe(true);
+    expect(world.passableFor(BIOME_AMPHIBIAN, ...at(oceanCell))).toBe(false);
     // 障碍对所有栖息域都是真墙
     expect(world.passableFor(BIOME_LAND, ...at(obstacleCell))).toBe(false);
     expect(world.passableFor(BIOME_FRESHWATER, ...at(obstacleCell))).toBe(false);
     expect(world.passableFor(BIOME_OCEAN, ...at(obstacleCell))).toBe(false);
+    expect(world.passableFor(BIOME_AMPHIBIAN, ...at(obstacleCell))).toBe(false);
   });
 });
 
 describe('栖息域投放与硬隔离（模拟级）', () => {
-  it('初始个体全部落在各自栖息域的水面/陆地上', () => {
+  it('初始个体全部落在各自栖息域的水面/陆地上（两栖落陆或淡）', () => {
     const sim = new Simulation(triSpec());
     const w = sim.world;
     for (const a of sim.agents) {
@@ -134,11 +142,13 @@ describe('栖息域投放与硬隔离（模拟级）', () => {
       const t = w.terrain[w.cellIndex(a.x | 0, a.y | 0)];
       if (hab === BIOME_FRESHWATER) expect(t).toBe(TERRAIN_FRESH);
       else if (hab === BIOME_OCEAN) expect(t).toBe(TERRAIN_OCEAN);
-      else expect(t === TERRAIN_NORMAL || t === 2).toBe(true);
+      else if (hab === BIOME_AMPHIBIAN) {
+        expect(t === TERRAIN_NORMAL || t === TERRAIN_FRESH).toBe(true);
+      } else expect(t === TERRAIN_NORMAL || t === 2).toBe(true);
     }
   });
 
-  it('跑 800 tick 无一体越域（真阻挡在实战中生效）', () => {
+  it('跑 800 tick 无一体越域（真阻挡在实战中生效；两栖不入海）', () => {
     const sim = new Simulation(triSpec());
     const w = sim.world;
     for (let t = 0; t < 800; t++) {
@@ -150,7 +160,11 @@ describe('栖息域投放与硬隔离（模拟级）', () => {
     for (const a of sim.agents) {
       const hab = sim.species.all.find((s) => s.id === a.speciesId)!.habitat ?? BIOME_LAND;
       const cellHab = habitatOfTerrain(w.terrain[w.cellIndex(a.x | 0, a.y | 0)]);
-      expect(cellHab).toBe(hab);
+      if (hab === BIOME_AMPHIBIAN) {
+        expect(cellHab === BIOME_LAND || cellHab === BIOME_FRESHWATER).toBe(true);
+      } else {
+        expect(cellHab).toBe(hab);
+      }
       expect(Number.isFinite(a.energy)).toBe(true);
     }
   });
@@ -222,6 +236,142 @@ describe('栖息域继承（谱系学基础）', () => {
       if (!parent) continue; // 祖先已从 all 列表裁剪的情形不存在（all 全保留），防御式跳过
       expect(s.habitat ?? BIOME_LAND).toBe(parent.habitat ?? BIOME_LAND);
     }
+  });
+});
+
+describe('涉食（隔岸取食，苛刻条件）', () => {
+  it('本格吃空时，陆生生物可隔岸吃到相邻水面格的食物（效率打折）', () => {
+    const sim = new Simulation(triSpec());
+    const w = sim.world;
+    // 找一个「陆地格紧邻淡水格」的岸格组合
+    let shore = -1;
+    let water = -1;
+    for (let i = 0; i < w.n && shore < 0; i++) {
+      if (w.terrain[i] !== TERRAIN_NORMAL) continue;
+      const x = i % w.width;
+      const y = (i / w.width) | 0;
+      const nbs = [
+        x > 0 ? i - 1 : -1,
+        x < w.width - 1 ? i + 1 : -1,
+        y > 0 ? i - w.width : -1,
+        y < w.height - 1 ? i + w.width : -1,
+      ];
+      for (const ni of nbs) {
+        if (ni >= 0 && w.terrain[ni] === TERRAIN_FRESH) {
+          shore = i;
+          water = ni;
+          break;
+        }
+      }
+    }
+    expect(shore).toBeGreaterThanOrEqual(0);
+    // 构造场景：岸格食物清空，水面格食物满仓；塞一只低速陆生个体在岸格中心
+    w.food[shore] = 0;
+    w.food[water] = 50;
+    const landSpecies = sim.species.all.find((s) => (s.habitat ?? 0) === BIOME_LAND)!;
+    const genome = { ...DEFAULT_GENOME, speed: 0.1, aggression: 0, fear: 0, sociability: 0 };
+    const agent: Agent = {
+      id: 900001,
+      speciesId: landSpecies.id,
+      lineageId: landSpecies.id,
+      x: (shore % w.width) + 0.5,
+      y: Math.floor(shore / w.width) + 0.5,
+      dirX: 1,
+      dirY: 0,
+      energy: 80,
+      age: 1000,
+      genome,
+      attackCooldown: 0,
+      memoryX: -1,
+      memoryY: -1,
+      memoryTick: -9999,
+      alive: true,
+    };
+    sim.agents.push(agent);
+    sim.tickOnce();
+    // 低速个体必然仍在岸格内；岸格食物为 0 → 触发涉食，水面格食物被咬掉一口
+    expect(sim.world.food[water]).toBeLessThan(50);
+    expect(agent.energy).toBeGreaterThan(0);
+    expect(Number.isFinite(agent.energy)).toBe(true);
+  });
+
+  it('本格有食物时不涉食（涉食只是饥荒行为）', () => {
+    const sim = new Simulation(triSpec());
+    const w = sim.world;
+    let shore = -1;
+    let water = -1;
+    for (let i = 0; i < w.n && shore < 0; i++) {
+      if (w.terrain[i] !== TERRAIN_NORMAL) continue;
+      const x = i % w.width;
+      const y = (i / w.width) | 0;
+      const nbs = [
+        x > 0 ? i - 1 : -1,
+        x < w.width - 1 ? i + 1 : -1,
+        y > 0 ? i - w.width : -1,
+        y < w.height - 1 ? i + w.width : -1,
+      ];
+      for (const ni of nbs) {
+        if (ni >= 0 && w.terrain[ni] === TERRAIN_FRESH) {
+          shore = i;
+          water = ni;
+          break;
+        }
+      }
+    }
+    w.food[shore] = 30;
+    w.food[water] = 50;
+    const landSpecies = sim.species.all.find((s) => (s.habitat ?? 0) === BIOME_LAND)!;
+    sim.agents.push({
+      id: 900002,
+      speciesId: landSpecies.id,
+      lineageId: landSpecies.id,
+      x: (shore % w.width) + 0.5,
+      y: Math.floor(shore / w.width) + 0.5,
+      dirX: 1,
+      dirY: 0,
+      energy: 80,
+      age: 1000,
+      genome: { ...DEFAULT_GENOME, speed: 0.1, aggression: 0, fear: 0, sociability: 0 },
+      attackCooldown: 0,
+      memoryX: -1,
+      memoryY: -1,
+      memoryTick: -9999,
+      alive: true,
+    });
+    sim.tickOnce();
+    // 本格食物充足 → 正常进食本格，水面格分毫不动
+    expect(sim.world.food[water]).toBe(50);
+  });
+});
+
+describe('两栖命名与继承', () => {
+  it('默认基因组 → 绿蜓（Anax）+ 两栖标签开头；大猎手 → 尖牙鳄（Crocodylus ferox）', () => {
+    const d = describeGenome({ ...DEFAULT_GENOME }, BIOME_AMPHIBIAN);
+    expect(d.name).toBe('绿蜓');
+    expect(d.latin).toBe('Anax vulgaris');
+    expect(d.tags[0]).toBe('两栖');
+    const hunter = describeGenome({ ...DEFAULT_GENOME, size: 2.4, aggression: 0.9 }, BIOME_AMPHIBIAN);
+    expect(hunter.name).toBe('尖牙鳄');
+    expect(hunter.latin).toBe('Crocodylus ferox');
+  });
+
+  it('两栖物种分化继承两栖域；异域出生不收编', () => {
+    const table = new SpeciesTable();
+    const parent = table.found('祖螈', '#16a34a', { ...DEFAULT_GENOME }, 0, BIOME_AMPHIBIAN);
+    const child: Genome = {
+      speed: 2.4, sense: 20, size: 3.0, metabolism: 2.0,
+      aggression: 1, fear: 1, sociability: 1, reproThreshold: 320, hue: 300,
+    };
+    const r = table.assign(child, 10, BIOME_AMPHIBIAN);
+    expect(r.speciated).toBe(true);
+    expect(r.species.parentSpeciesId).toBe(parent.id);
+    expect(r.species.habitat).toBe(BIOME_AMPHIBIAN);
+    // 海洋出生的个体绝不归入两栖物种
+    const near: Genome = { ...DEFAULT_GENOME, speed: 0.56 };
+    const r2 = table.assign(near, 20, BIOME_OCEAN);
+    expect(r2.speciated).toBe(true);
+    expect(r2.species.habitat).toBe(BIOME_OCEAN);
+    expect(r2.species.parentSpeciesId).toBeNull();
   });
 });
 

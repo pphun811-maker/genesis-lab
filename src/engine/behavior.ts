@@ -1,7 +1,7 @@
 import type { Rng } from './rng';
 import type { World } from './world';
 import type { SpatialHash } from './spatial';
-import { HOME_TERRAIN, maxEnergyOf, type Agent } from './types';
+import { BIOME_AMPHIBIAN, HOME_TERRAIN, TERRAIN_FRESH, maxEnergyOf, type Agent } from './types';
 
 /**
  * 行为：感知 → 按基因权重决策 → 输出转向。
@@ -57,9 +57,10 @@ export function steer(self: Agent, ctx: BehaviorContext): SteerResult {
   // 实际感知半径：基因 sense 被密度上限收缩（拥挤干扰视线）
   const sense = Math.min(g.sense, ctx.senseCap);
   const r2 = sense * sense;
-  // 本域能产食物的地形值（陆=普通格，淡=3，海=4）；采样时一票否决异域格，
-  // 避免陆地生物隔着湖面追浮游食物在岸边打转
+  // 本域能产食物的地形值（陆=普通格，淡=3，海=4；两栖=陆格为主+淡格为副）；
+  // 采样时一票否决异域格，避免陆地生物隔着湖面追浮游食物在岸边打转
   const home = HOME_TERRAIN[ctx.habitat];
+  const altHome = ctx.habitat === BIOME_AMPHIBIAN ? TERRAIN_FRESH : -1;
   const maxE = maxEnergyOf(g.size);
   const sizeThreat = g.size * THREAT_RATIO;
   const sizePrey = g.size * PREY_RATIO;
@@ -173,7 +174,8 @@ export function steer(self: Agent, ctx: BehaviorContext): SteerResult {
       const sx = clampCell(self.x + ox, world.width);
       const sy = clampCell(self.y + oy, world.height);
       const idx = world.cellIndex(sx, sy);
-      if (world.terrain[idx] !== home) continue;
+      const t = world.terrain[idx];
+      if (t !== home && t !== altHome) continue;
       const f = world.food[idx];
       if (f > bestFood) {
         bestFood = f;

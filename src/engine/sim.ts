@@ -4,10 +4,15 @@ import { Rng } from './rng';
 import { SpeciesTable } from './species';
 import { SpatialHash } from './spatial';
 import {
+  AMPHIBIAN_FEED,
+  AMPHIBIAN_METAB,
+  AMPHIBIAN_SWIM,
+  BIOME_AMPHIBIAN,
   BIOME_FRESHWATER,
   BIOME_LAND,
   BIOME_OCEAN,
   DEATH_CAUSE_KEYS,
+  SHORE_FEED,
   TERRAIN_FRESH,
   TERRAIN_HAZARD,
   TERRAIN_NORMAL,
@@ -86,11 +91,15 @@ function cloneCounters(c: SimCounters): SimCounters {
 /**
  * 栖息域硬隔离（2026-10-13 用户拍板）：能否进入地形值 t 的格子。
  * 障碍格对所有生物都是真墙；陆域生物可走普通格与危险区；
- * 淡水生物只待淡水格，海洋生物只待海洋格。
+ * 淡水生物只待淡水格，海洋生物只待海洋格；
+ * 两栖生物（2026-10-13 第二次拍板）可走陆地与淡水，不能下海。
  */
 function canEnter(habitat: number, t: number): boolean {
   if (t === TERRAIN_OBSTACLE) return false;
   if (habitat === BIOME_LAND) return t === TERRAIN_NORMAL || t === TERRAIN_HAZARD;
+  if (habitat === BIOME_AMPHIBIAN) {
+    return t === TERRAIN_NORMAL || t === TERRAIN_HAZARD || t === TERRAIN_FRESH;
+  }
   if (t === TERRAIN_FRESH) return habitat === BIOME_FRESHWATER;
   return t === TERRAIN_OCEAN && habitat === BIOME_OCEAN;
 }
@@ -123,6 +132,8 @@ export class Simulation {
   private lastMetricCounters: SimCounters;
   /** 采样窗口内各物种死因增量（metrics 采样时清空） */
   private speciesDeathsWindow = new Map<number, DeathCauses>();
+  /** 物种 id → 栖息域缓存（物种创建稀少，惰性整表同步）；个体域语义以物种为准 */
+  private speciesHabitat: number[] = [];
 
   // ---- 里程碑叙述状态（不影响模拟物理，仅用于生成事件）----
   /** 全场食物能量容量（恒定），供饥荒/丰饶判定 */
@@ -213,6 +224,27 @@ export class Simulation {
     }
   }
 
+  /** 投放匹配：两栖可落在陆地或淡水；其余域只落本域 */
+  private habitatMatches(habitatHint: number, cellHabitat: number): boolean {
+    if (habitatHint === BIOME_AMPHIBIAN) {
+      return cellHabitat === BIOME_LAND || cellHabitat === BIOME_FRESHWATER;
+    }
+    return cellHabitat === habitatHint;
+  }
+
+  /**
+   * 个体栖息域：以物种属性为准（不能按所在格推导——两栖站在水里时
+   * 格子是淡水，但它的域仍是两栖；位置推导会把它的通行/代谢语义全带歪）。
+   * 缓存随物种表惰性整表同步（物种创建稀少，代价可忽略）。
+   */
+  private habitatOfSpecies(speciesId: number): number {
+    const all = this.species.all;
+    if (this.speciesHabitat.length < all.length + 1) {
+      for (const s of all) this.speciesHabitat[s.id] = s.habitat ?? BIOME_LAND;
+    }
+    return this.speciesHabitat[speciesId] ?? BIOME_LAND;
+  }
+
   /**
    * 在指定栖息域内随机取点，返回 [x, y, 实际栖息域]。
    * 随机 80 次未命中则线性扫描兜底（确定性）；该圈域不存在时退回任意
@@ -227,12 +259,12 @@ export class Simulation {
       const cy = y | 0;
       if (!w.passable(cx, cy)) continue;
       const h = habitatOfTerrain(w.terrain[w.cellIndex(cx, cy)]);
-      if (h === habitatHint) return [x, y, h];
+      if (this.habitatMatches(habitatHint, h)) return [x, y, habitatHint];
     }
     for (let i = 0; i < w.n; i++) {
       const t = w.terrain[i];
       if (t === TERRAIN_OBSTACLE) continue;
-      if (habitatOfTerrain(t) === habitatHint) {
+      if (this.habitatMatches(habitatHint, habitatOfTerrain(t))) {
         return [(i % w.width) + 0.5, Math.floor(i / w.width) + 0.5, habitatHint];
       }
     }
@@ -440,11 +472,8 @@ export class Simulation {
       }
 
       // ---- 决策与移动 ----
-      // 栖息域由所在格推导（硬隔离保证个体永远站在本域格上；旧快照中
-      // 站进障碍格的个体按陆域处理，可自行走出）
-      const habitat = habitatOfTerrain(
-        w.terrain[w.cellIndex(clampCell(a.x, w.width), clampCell(a.y, w.height))],
-      );
+      // 个体栖息域以物种属性为准（两栖站在水里时域仍是两栖，见 habitatOfSpecies）
+      const habitat = this.habitatOfSpecies(a.speciesId);
       ctx.habitat = habitat;
       const st = steer(a, ctx);
       a.intent = st.intent;
@@ -456,7 +485,7 @@ export class Simulation {
         moved = this.moveAgent(a, habitat, step);
       }
 
-      // ---- 进食与危险区 ----
+      // ---- 进食、涉食与危险区 ----
       const cx = clampCell(a.x, w.width);
       const cy = clampCell(a.y, w.height);
       const ci = w.cellIndex(cx, cy);
@@ -466,12 +495,41 @@ export class Simulation {
         const room = maxEnergyOf(a.genome.size) - a.energy;
         const food = w.food[ci];
         if (room > 0 && food > 0) {
-          const gain = Math.min(food, EAT_RATE, room);
+          let gain = Math.min(food, EAT_RATE, room);
+          // 两栖在水中进食打折（抢食抢不过原住民）
+          if (habitat === BIOME_AMPHIBIAN && cellT === TERRAIN_FRESH) gain *= AMPHIBIAN_FEED;
           w.food[ci] = food - gain;
           a.energy += gain;
           a.memoryX = a.x;
           a.memoryY = a.y;
           a.memoryTick = t;
+        } else if (room > 0 && food <= 0) {
+          // 涉食：本格吃空、隔岸取食（熊捞鱼/鱼啃草），效率打折——苛刻的饥荒行为
+          const curIsWater = cellT === TERRAIN_FRESH || cellT === TERRAIN_OCEAN;
+          const shoreGain = Math.min(EAT_RATE * SHORE_FEED, room);
+          // 4 邻确定性顺序：左右上下
+          const nx4 = [cx - 1, cx + 1, cx, cx];
+          const ny4 = [cy, cy, cy - 1, cy + 1];
+          for (let k = 0; k < 4; k++) {
+            const mx = nx4[k];
+            const my = ny4[k];
+            if (mx < 0 || my < 0 || mx >= w.width || my >= w.height) continue;
+            const ni = my * w.width + mx;
+            const t2 = w.terrain[ni];
+            if (t2 !== TERRAIN_NORMAL && t2 !== TERRAIN_FRESH && t2 !== TERRAIN_OCEAN) continue;
+            // 只吃「异岸」的食物：水↔陆互取，同岸邻格不在此列
+            const nIsWater = t2 === TERRAIN_FRESH || t2 === TERRAIN_OCEAN;
+            if (nIsWater === curIsWater) continue;
+            const nf = w.food[ni];
+            if (nf <= 0) continue;
+            const gain = Math.min(nf, shoreGain);
+            w.food[ni] = nf - gain;
+            a.energy += gain;
+            a.memoryX = a.x;
+            a.memoryY = a.y;
+            a.memoryTick = t;
+            break;
+          }
         }
       } else if (cellT === TERRAIN_HAZARD) {
         a.energy -= HAZARD_DMG;
@@ -490,8 +548,10 @@ export class Simulation {
       const lifeFrac = a.age / maxAgeOf(a.genome.size);
       const senescence = 1 + SENESCENCE * lifeFrac * lifeFrac;
       const s = a.genome.sense;
+      // 两栖税：全域基础代谢 +45%（2026-10-13 用户拍板的「苛刻条件」，只影响两栖个体）
+      const metabTax = habitat === BIOME_AMPHIBIAN ? 1 + AMPHIBIAN_METAB : 1;
       const drain =
-        (BASE_METAB * a.genome.size * a.genome.metabolism * (1 + SENSE_COST * s * s) +
+        (BASE_METAB * a.genome.size * a.genome.metabolism * (1 + SENSE_COST * s * s) * metabTax +
           MOVE_COST * a.genome.size * moved) * senescence;
       a.energy -= drain;
       this.counters.dissipated += drain;
@@ -824,30 +884,35 @@ export class Simulation {
   private moveAgent(a: Agent, habitat: number, step: number): number {
     const w = this.world;
     const W = w.width;
-    const nx = a.x + a.dirX * step;
-    const ny = a.y + a.dirY * step;
+    // 两栖在水中移动减速（按出发格判定）：追不上专业水生猎手
+    let spd = step;
+    if (habitat === BIOME_AMPHIBIAN && w.terrain[(a.y | 0) * W + (a.x | 0)] === TERRAIN_FRESH) {
+      spd = step * AMPHIBIAN_SWIM;
+    }
+    const nx = a.x + a.dirX * spd;
+    const ny = a.y + a.dirY * spd;
     if (nx >= 0 && ny >= 0 && nx < W && ny < w.height) {
       if (canEnter(habitat, w.terrain[(ny | 0) * W + (nx | 0)])) {
         a.x = nx;
         a.y = ny;
-        return step;
+        return spd;
       }
     }
     // 滑行：先试只走 x，再试只走 y，都不行则调头（贴岸/贴壁滑行）
-    const nx2 = a.x + a.dirX * step;
+    const nx2 = a.x + a.dirX * spd;
     if (nx2 >= 0 && nx2 < W && a.y >= 0 && a.y < w.height) {
       if (canEnter(habitat, w.terrain[(a.y | 0) * W + (nx2 | 0)])) {
         a.x = nx2;
         a.dirY = -a.dirY;
-        return step * 0.8;
+        return spd * 0.8;
       }
     }
-    const ny2 = a.y + a.dirY * step;
+    const ny2 = a.y + a.dirY * spd;
     if (ny2 >= 0 && ny2 < w.height && a.x >= 0 && a.x < W) {
       if (canEnter(habitat, w.terrain[(ny2 | 0) * W + (a.x | 0)])) {
         a.y = ny2;
         a.dirX = -a.dirX;
-        return step * 0.8;
+        return spd * 0.8;
       }
     }
     a.dirX = -a.dirX;
@@ -912,11 +977,7 @@ export class Simulation {
     const [ox, oy] = this.rng.disc(1.5);
     let x = parent.x + ox;
     let y = parent.y + oy;
-    const hab = habitatOfTerrain(
-      this.world.terrain[
-        this.world.cellIndex(clampCell(parent.x, this.world.width), clampCell(parent.y, this.world.height))
-      ],
-    );
+    const hab = this.habitatOfSpecies(parent.speciesId);
     if (!this.canBirthAt(hab, x, y)) {
       x = parent.x;
       y = parent.y;
@@ -1003,9 +1064,7 @@ export class Simulation {
     const [ox, oy] = this.rng.disc(1.5);
     let x = a.x + ox;
     let y = a.y + oy;
-    const hab = habitatOfTerrain(
-      this.world.terrain[this.world.cellIndex(clampCell(a.x, this.world.width), clampCell(a.y, this.world.height))],
-    );
+    const hab = this.habitatOfSpecies(a.speciesId);
     if (!this.canBirthAt(hab, x, y)) {
       x = a.x;
       y = a.y;

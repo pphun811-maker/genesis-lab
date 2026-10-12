@@ -1,4 +1,4 @@
-import { BIOME_FRESHWATER, BIOME_OCEAN, type WorldSpec } from './types';
+import { BIOME_AMPHIBIAN, BIOME_FRESHWATER, BIOME_OCEAN, type WorldSpec } from './types';
 
 /**
  * 内置世界预设。数值经过能量学估算：
@@ -222,6 +222,22 @@ export const PRESETS: PresetDef[] = [
             variance: { speed: 0.1, sense: 1.5 },
           },
           {
+            name: '泽鳄',
+            color: '#16a34a',
+            count: 12,
+            habitat: BIOME_AMPHIBIAN,
+            genome: {
+              speed: 0.85,
+              sense: 11,
+              size: 1.5,
+              aggression: 0.85,
+              fear: 0,
+              reproThreshold: 200,
+              metabolism: 1.0,
+            },
+            variance: { speed: 0.1, sense: 1.5 },
+          },
+          {
             name: '湖鲈',
             color: '#f87171',
             count: 22,
@@ -344,7 +360,7 @@ export function normalizeSpec(raw: Partial<WorldSpec> & { species?: WorldSpec['s
             count: clampInt(s.count ?? 100, 1, 600),
             genome: { ...base.species[0].genome, ...s.genome },
             variance: { ...(s.variance ?? {}) },
-            habitat: clampInt(s.habitat ?? 0, 0, 2),
+            habitat: clampInt(s.habitat ?? 0, 0, 3),
           }))
         : base.species,
     rules: {

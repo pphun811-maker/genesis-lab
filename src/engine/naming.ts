@@ -1,4 +1,5 @@
 import {
+  BIOME_AMPHIBIAN,
   BIOME_FRESHWATER,
   BIOME_LAND,
   BIOME_OCEAN,
@@ -117,17 +118,41 @@ const OCEAN_ARCHETYPES: Array<{
   { test: () => true, base: '鲹', genus: 'Caranx' },
 ];
 
+/** 两栖类群表：水陆两栖生态位——伏击鳄鲵/涉禽鹭/蛙蟾龟鳖（付全域代谢税的高税特化种） */
+const AMPHIBIAN_ARCHETYPES: Array<{
+  test: (g: Genome) => boolean;
+  base: string;
+  genus: string;
+}> = [
+  { test: (g) => g.aggression >= 0.5 && g.size >= 1.6, base: '鳄', genus: 'Crocodylus' },
+  { test: (g) => g.aggression >= 0.5 && g.size >= 0.9, base: '鲵', genus: 'Andrias' },
+  { test: (g) => g.aggression >= 0.5, base: '螈', genus: 'Cynops' },
+  { test: (g) => g.size >= 2.2, base: '蟒', genus: 'Python' },
+  { test: (g) => g.sense >= 12, base: '鹭', genus: 'Ardea' },
+  { test: (g) => g.speed >= 1.2, base: '獭', genus: 'Lutra' },
+  { test: (g) => g.metabolism <= 0.7, base: '蟾', genus: 'Bufo' },
+  { test: (g) => g.fear >= 0.6, base: '蛙', genus: 'Rana' },
+  { test: (g) => g.sociability >= 0.6 && g.size >= 1.2, base: '龟', genus: 'Chelydra' },
+  { test: (g) => g.sociability >= 0.6, base: '蝾', genus: 'Triturus' },
+  { test: (g) => g.size >= 1.7, base: '蜥', genus: 'Varanus' },
+  { test: (g) => g.size >= 1.3, base: '蚺', genus: 'Eunectes' },
+  { test: (g) => g.size <= 0.65, base: '蝌', genus: 'Hyla' },
+  { test: () => true, base: '蜓', genus: 'Anax' },
+];
+
 /** 栖息域 → 类群表（陆地表即历史表，保证旧世界命名不变） */
 const ARCHETYPES_BY_HABITAT: ReadonlyArray<typeof ARCHETYPES> = [
   ARCHETYPES,
   FRESHWATER_ARCHETYPES,
   OCEAN_ARCHETYPES,
+  AMPHIBIAN_ARCHETYPES,
 ];
 
-/** 水域物种的特征标签前缀（陆地物种不加前缀，与历史行为一致） */
+/** 水域/两栖物种的特征标签前缀（陆地物种不加前缀，与历史行为一致） */
 const HABITAT_TAG: Record<number, string> = {
   [BIOME_FRESHWATER]: '淡水',
   [BIOME_OCEAN]: '海洋',
+  [BIOME_AMPHIBIAN]: '两栖',
 };
 
 /** 形体描述符：基因偏离触发，size 级描述符插在颜色前，其余直接缀在类群前 */
