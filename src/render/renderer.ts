@@ -114,6 +114,7 @@ export class WorldRenderer {
     const tctx = tc.getContext('2d')!;
     const img = tctx.createImageData(width, height);
     const d = img.data;
+    // 第一遍：按地形值铺底色
     for (let i = 0; i < width * height; i++) {
       const t = terrain[i];
       const o = i * 4;
@@ -128,17 +129,17 @@ export class WorldRenderer {
         d[o + 1] = 42;
         d[o + 2] = 40;
       } else if (t === 3) {
-        // 淡水：湖绿→深青，随肥沃度略亮（营养陷阱）
+        // 淡水：青绿色（与海洋的藏蓝拉开色相），随肥沃度微亮（营养陷阱）
         const f = fertility[i];
-        d[o] = 14 + 10 * f;
-        d[o + 1] = 58 + 34 * f;
-        d[o + 2] = 66 + 30 * f;
+        d[o] = 15 + 11 * f;
+        d[o + 1] = 86 + 38 * f;
+        d[o + 2] = 82 + 32 * f;
       } else if (t === 4) {
-        // 海洋：深邃暗蓝，随肥沃度（浮游生物）微亮
+        // 海洋：深邃藏蓝（蓝分量明显高于绿分量），随浮游生物微亮
         const f = fertility[i];
-        d[o] = 9 + 8 * f;
-        d[o + 1] = 26 + 18 * f;
-        d[o + 2] = 46 + 26 * f;
+        d[o] = 8 + 8 * f;
+        d[o + 1] = 24 + 16 * f;
+        d[o + 2] = 52 + 26 * f;
       } else {
         // 肥沃度 → 暗绿渐变
         const f = fertility[i];
@@ -147,6 +148,32 @@ export class WorldRenderer {
         d[o + 2] = 30 + 20 * f;
       }
       d[o + 3] = 255;
+    }
+    // 第二遍：水陆交界描边——水面格若与陆地相邻则提亮为「浅滩/湖岸」，
+    // 让海岸线与湖岸线一眼可读（一次性 O(n) 邻接扫描）
+    for (let i = 0; i < width * height; i++) {
+      const t = terrain[i];
+      if (t !== 3 && t !== 4) continue;
+      const x = i % width;
+      const y = (i / width) | 0;
+      let shore = false;
+      if (x > 0 && terrain[i - 1] < 3) shore = true;
+      else if (x < width - 1 && terrain[i + 1] < 3) shore = true;
+      else if (y > 0 && terrain[i - width] < 3) shore = true;
+      else if (y < height - 1 && terrain[i + width] < 3) shore = true;
+      if (!shore) continue;
+      const o = i * 4;
+      if (t === 3) {
+        // 湖岸：青绿提亮
+        d[o] = Math.min(255, d[o] + 22);
+        d[o + 1] = Math.min(255, d[o + 1] + 34);
+        d[o + 2] = Math.min(255, d[o + 2] + 28);
+      } else {
+        // 浅滩：藏蓝提亮成灰蓝
+        d[o] = Math.min(255, d[o] + 30);
+        d[o + 1] = Math.min(255, d[o + 1] + 42);
+        d[o + 2] = Math.min(255, d[o + 2] + 46);
+      }
     }
     tctx.putImageData(img, 0, 0);
     this.terrainCanvas = tc;
@@ -192,15 +219,15 @@ export class WorldRenderer {
       const o = i * 4;
       const t = this.terrainArr.length > i ? this.terrainArr[i] : 0;
       if (t === 3) {
-        // 淡水浮游生物：湖青
-        d[o] = 94;
+        // 淡水浮游生物：黄绿（与湖底青绿同族但更亮）
+        d[o] = 132;
         d[o + 1] = 234;
-        d[o + 2] = 212;
+        d[o + 2] = 158;
       } else if (t === 4) {
-        // 海洋浮游生物：浪青
-        d[o] = 103;
-        d[o + 1] = 232;
-        d[o + 2] = 249;
+        // 海洋浮游生物：天蓝（与海底藏蓝同族但更亮）
+        d[o] = 96;
+        d[o + 1] = 178;
+        d[o + 2] = 246;
       } else {
         // 陆地植被：绿
         d[o] = 74;

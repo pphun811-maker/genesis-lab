@@ -184,7 +184,7 @@ export const PRESETS: PresetDef[] = [
   {
     id: 'lake-continent',
     title: '千湖大陆',
-    desc: '湿润大陆湖泊星罗棋布。淡水鱼群与陆生种群被水岸分隔，每片湖都是独立的物种孵化器。',
+    desc: '湿润大陆湖泊星罗棋布。岸狼会追猎到水边、捕获贴岸的鱼，湖鲈也伏击岸边的陆生生物——每片湖都是独立的物种孵化器。',
     spec: (seed) =>
       makeSpec('千湖大陆', seed, {
         food: { maxPerCell: 20, regrow: 0.018 },
@@ -201,9 +201,25 @@ export const PRESETS: PresetDef[] = [
           {
             name: '岸羚',
             color: '#a3e635',
-            count: 120,
+            count: 110,
             genome: { speed: 0.75, sense: 9, size: 0.85, aggression: 0, fear: 0.7, sociability: 0.5 },
             variance: { speed: 0.12, sense: 1.5, fear: 0.1 },
+          },
+          {
+            name: '岸狼',
+            color: '#f43f5e',
+            count: 18,
+            genome: {
+              speed: 1.0,
+              sense: 12,
+              size: 1.35,
+              aggression: 0.9,
+              fear: 0,
+              sociability: 0.15,
+              reproThreshold: 190,
+              metabolism: 1.05,
+            },
+            variance: { speed: 0.1, sense: 1.5 },
           },
           {
             name: '湖鲈',
