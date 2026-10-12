@@ -127,7 +127,8 @@ bench/perf.bench.ts   # 性能基准（tsx 运行）
 
 ## 七、环境快照（交接时刻）
 
+- **GitHub**：https://github.com/pphun811-maker/genesis-lab （private，main 分支；改动后 `git push` 即可同步）
 - dev server 在 **5175**（后台任务,会话结束即停）；4173 preview 已停。接手自己 `npm run dev`。
 - 5175 origin IndexedDB 有多个实验（含用户亲手创建的「突变沸腾」~2.9k 个体 29 物种,以及本轮测试的猎食军备竞赛及分叉）；4173 有一个 preview 测试用的和平花园。
-- `tsconfig.tsbuildinfo` 是 build 缓存产物,别提交别删。
+- `tsconfig.tsbuildinfo` 是 build 缓存产物,已进 .gitignore,别删。
 - 用户原则：**一切以实测为准**（本文档所有 ✅ 均为本轮实测）。

@@ -12,20 +12,20 @@ import {
 const DEFAULTS: LlmSettings = {
   baseURL: 'https://open.bigmodel.cn/api/paas/v4',
   apiKey: '',
-  model: 'GLM-4-Flash-250414',
+  model: 'glm-4-flash-250414',
 };
 
 /** 厂商预设：一键填充 baseURL + 模型（Key 保留不动） */
 const PROVIDER_PRESETS: Array<{ label: string; baseURL: string; model: string }> = [
   {
-    label: 'GLM-4-Flash-250414（免费）',
+    label: 'glm-4-flash-250414（免费）',
     baseURL: 'https://open.bigmodel.cn/api/paas/v4',
-    model: 'GLM-4-Flash-250414',
+    model: 'glm-4-flash-250414',
   },
   {
-    label: 'GLM-5.6-Flash',
+    label: 'glm-5.3-flash',
     baseURL: 'https://open.bigmodel.cn/api/paas/v4',
-    model: 'GLM-5.6-Flash',
+    model: 'glm-5.3-flash',
   },
   {
     label: 'DeepSeek',
@@ -120,7 +120,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           >
             免费注册智谱开放平台 ↗
           </a>
-          （GLM-4-Flash-250414 免费）。
+          （glm-4-flash-250414 免费）。
         </p>
         <div className="mb-3 flex flex-wrap gap-1.5">
           {PROVIDER_PRESETS.map((p) => (
